@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Musician Copy App (SoundTouch Engine)</title>
+  <title>Musician Copy App (Pro DSP Engine)</title>
   
   <!-- PWA Manifest & Meta Tags -->
   <link rel="manifest" href="manifest.json">
@@ -14,8 +14,8 @@
   <script src="https://unpkg.com/wavesurfer.js@7"></script>
   <script src="https://unpkg.com/wavesurfer.js@7/dist/plugins/regions.min.js"></script>
 
-  <!-- SoundTouchJS (고품질 WSOLA 타임스트레치 & 피치시프트 엔진) -->
-  <script src="https://cdn.jsdelivr.net/npm/soundtouchjs@0.1.30/dist/soundtouch.min.js"></script>
+  <!-- Tone.js (글로벌 표준 Web Audio DSP 프레임워크) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 
   <style>
     * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -72,7 +72,7 @@
 <body>
 
   <div class="container">
-    <h1>🎸 Musician Copy App (SoundTouch Engine)</h1>
+    <h1>🎸 Musician Copy App (Pro DSP Engine)</h1>
 
     <div class="controls-main">
       <input type="file" id="audio-file" accept="audio/*,video/*">
@@ -120,7 +120,6 @@
 
         <input type="range" id="slider-pitch" min="-6" max="6" step="1" value="0">
         
-        <!-- 실시간 영문 음이름 결과 표시 상자 -->
         <div class="key-display-box">
           <div class="key-title">Target Key (조절된 키)</div>
           <div class="key-result" id="target-key-text">A (0 Semitones)</div>
@@ -137,6 +136,7 @@
   <script>
     const noteNames = ["C", "C# / Db", "D", "D# / Eb", "E", "F", "F# / Gb", "G", "G# / Ab", "A", "A# / Bb", "B"];
 
+    // 1. Wavesurfer (시각화 전용)
     const wsRegions = WaveSurfer.Regions.create();
     const wavesurfer = WaveSurfer.create({
       container: '#waveform',
@@ -150,13 +150,13 @@
       plugins: [wsRegions]
     });
 
-    // SoundTouch 오디오 엔진 변수
-    let audioCtx = null;
-    let soundTouchShifter = null;
-    let audioBuffer = null;
-    let isPlaying = false;
+    // 2. Tone.js 전문 DSP 노드 변수
+    let player = null;
+    let pitchShiftNode = null;
+    let isToneReady = false;
     let activeRegion = null;
     let loopA = 0;
+    let animFrameId = null;
 
     // UI 요소
     const sliderSpeed = document.getElementById('slider-speed');
@@ -166,169 +166,157 @@
     const selectOrigKey = document.getElementById('select-orig-key');
     const targetKeyText = document.getElementById('target-key-text');
     const btnPlay = document.getElementById('btn-play');
+    const statusText = document.getElementById('status-text');
 
-    // 1. 파일 선택 이벤트
-    document.getElementById('audio-file').addEventListener('change', (e) => {
+    // 3. 파일 로딩 및 Tone.js 연결
+    document.getElementById('audio-file').addEventListener('change', async (e) => {
       const file = e.target.files[0];
-      if (file) {
-        document.getElementById('status-text').innerText = `Loading & Decoding: ${file.name}...`;
-        if (isPlaying) stopAudio();
-        const url = URL.createObjectURL(file);
-        wavesurfer.load(url);
+      if (!file) return;
+
+      statusText.innerText = `음원 분석 및 디코딩 중: ${file.name}...`;
+
+      if (player) {
+        player.stop();
+        player.dispose();
       }
+
+      const url = URL.createObjectURL(file);
+      wavesurfer.load(url);
+
+      // Tone.js DSP 오디오 노드 구축
+      const arrayBuffer = await file.arrayBuffer();
+      const audioBuffer = await Tone.context.decodeAudioData(arrayBuffer);
+
+      // PitchShift 전용 노드 생성 및 마스터 출력 연결
+      if (pitchShiftNode) pitchShiftNode.dispose();
+      pitchShiftNode = new Tone.PitchShift(0).toDestination();
+
+      // GrainPlayer 생성 (피치와 템포가 100% 완전 분리되는 알고리즘 적용)
+      player = new Tone.GrainPlayer(audioBuffer);
+      player.grainSize = 0.1;
+      player.overlap = 0.05;
+      player.connect(pitchShiftNode);
+
+      isToneReady = true;
+      applyParams();
+      statusText.innerText = '로딩 완료! 데스크톱/모바일 재생 준비 끝.';
     });
 
-    // 2. 음원 로드 완료 시 SoundTouch 엔진 초기화
-    wavesurfer.on('ready', async () => {
-      audioBuffer = wavesurfer.getDecodedData();
-      
-      if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      }
+    // 4. 재생 / 일시정지 (데스크톱 오디오 잠금 해제 로직 포함)
+    async function togglePlay() {
+      if (!isToneReady || !player) return;
 
-      if (soundTouchShifter) {
-        soundTouchShifter.disconnect();
-      }
+      // 데스크톱 브라우저 오디오 맥락(Context) 활성화
+      await Tone.start();
 
-      // SoundTouch PitchShifter 인스턴스 생성 (버퍼 크기 4096)
-      soundTouchShifter = new soundtouch.PitchShifter(audioCtx, audioBuffer, 4096);
-      
-      applySpeedAndPitch();
-      document.getElementById('status-text').innerText = 'SoundTouch 고품질 피치 엔진 로드 완료!';
-    });
-
-    // 3. 재생 / 일시정지 제어
-    function togglePlay() {
-      if (!soundTouchShifter) return;
-
-      if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-      }
-
-      if (isPlaying) {
-        stopAudio();
+      if (player.state === "started") {
+        player.stop();
+        btnPlay.innerText = "재생 / 일시정지";
+        if (animFrameId) cancelAnimationFrame(animFrameId);
       } else {
-        startAudio();
+        player.start();
+        btnPlay.innerText = "일시정지";
+        syncPlayhead();
       }
-    }
-
-    function startAudio() {
-      if (!soundTouchShifter) return;
-      soundTouchShifter.connect();
-      isPlaying = true;
-      btnPlay.innerText = "일시정지";
-    }
-
-    function stopAudio() {
-      if (!soundTouchShifter) return;
-      soundTouchShifter.disconnect();
-      isPlaying = false;
-      btnPlay.innerText = "재생 / 일시정지";
     }
 
     btnPlay.addEventListener('click', togglePlay);
 
-    // 4. 파형 클릭 시 재생 위치 이동 동기화
+    // 5. 파형 클릭 시 재생 위치 이동 동기화
     wavesurfer.on('interaction', (newTime) => {
-      if (soundTouchShifter) {
-        soundTouchShifter.timePlayed = newTime;
+      if (player && isToneReady) {
+        const wasPlaying = player.state === "started";
+        player.stop();
+        player.seek(newTime);
+        if (wasPlaying) player.start();
       }
     });
 
-    // 5. 실시간 재생 위치 및 A-B 루프 모니터링 (30FPS)
-    function syncPlayheadAndLoop() {
-      if (isPlaying && soundTouchShifter) {
-        const currentTime = soundTouchShifter.timePlayed;
+    // 6. 실시간 위치 및 A-B 루프 추적
+    function syncPlayhead() {
+      if (player && player.state === "started") {
+        const currentTime = player.now() - player._startTime + player.offset;
         wavesurfer.setTime(currentTime);
 
-        // A-B 구간 반복 제어
+        // A-B 구간 반복
         if (activeRegion) {
           if (currentTime >= activeRegion.end || currentTime < activeRegion.start) {
-            soundTouchShifter.timePlayed = activeRegion.start;
+            player.seek(activeRegion.start);
           }
         }
+        animFrameId = requestAnimationFrame(syncPlayhead);
       }
-      requestAnimationFrame(syncPlayheadAndLoop);
     }
-    requestAnimationFrame(syncPlayheadAndLoop);
 
-    // 6. A-B 구간 반복 버튼
+    // 7. A-B 구간 설정
     document.getElementById('btn-set-a').addEventListener('click', () => {
-      if (soundTouchShifter) {
-        loopA = soundTouchShifter.timePlayed;
-        document.getElementById('status-text').innerText = `A-Point Set: ${loopA.toFixed(2)}s`;
+      if (player) {
+        loopA = player.now() - player._startTime + player.offset;
+        statusText.innerText = `A 지점 설정: ${loopA.toFixed(2)}초`;
       }
     });
 
     document.getElementById('btn-set-b').addEventListener('click', () => {
-      if (!soundTouchShifter) return;
-      const loopB = soundTouchShifter.timePlayed;
-      if (loopB <= loopA) return alert('B point must be after A point.');
-      
+      if (!player) return;
+      const loopB = player.now() - player._startTime + player.offset;
+      if (loopB <= loopA) return alert('B 지점은 A 지점보다 뒤에 있어야 합니다.');
+
       wsRegions.clearRegions();
       activeRegion = wsRegions.addRegion({
         start: loopA, end: loopB, color: 'rgba(0, 242, 254, 0.3)', drag: true, resize: true
       });
 
-      soundTouchShifter.timePlayed = loopA;
-      if (!isPlaying) startAudio();
-      document.getElementById('status-text').innerText = `Loop Set (${loopA.toFixed(2)}s ~ ${loopB.toFixed(2)}s)`;
+      player.seek(loopA);
+      if (player.state !== "started") togglePlay();
+      statusText.innerText = `구간 반복 설정 (${loopA.toFixed(2)}s ~ ${loopB.toFixed(2)}s)`;
     });
 
     document.getElementById('btn-clear-loop').addEventListener('click', () => {
       wsRegions.clearRegions();
       activeRegion = null;
-      document.getElementById('status-text').innerText = 'Loop cleared.';
+      statusText.innerText = '구간 반복이 해제되었습니다.';
     });
 
-    // 7. SoundTouch 엔진 속도 및 피치 적용
-    function applySpeedAndPitch() {
-  const speed = parseFloat(sliderSpeed.value);
-  const semitones = parseInt(sliderPitch.value);
-  const origKeyIdx = parseInt(selectOrigKey.value);
+    // 8. 속도 및 피치 적용 (독립 제어)
+    function applyParams() {
+      const speed = parseFloat(sliderSpeed.value);
+      const semitones = parseInt(sliderPitch.value);
+      const origKeyIdx = parseInt(selectOrigKey.value);
 
-  // 1. 피치 변환 비율 계산 (2^(semitones / 12))
-  const pitchFactor = Math.pow(2, semitones / 12);
+      if (player && pitchShiftNode) {
+        // GrainPlayer 속도 제어 (피치 변화 없음)
+        player.playbackRate = speed;
+        // PitchShift 노드 피치 제어 (속도 변화 없음)
+        pitchShiftNode.pitch = semitones;
+      }
 
-  // 2. SoundTouch 엔진 속도 보정 적용
-  if (soundTouchShifter) {
-    soundTouchShifter.pitchSemitones = semitones;
-    
-    // ★ 핵심 수정: 피치가 변할 때 속도가 변하지 않도록 피치 비율(pitchFactor)로 나누어 상쇄해 줍니다!
-    soundTouchShifter.tempo = speed / pitchFactor;
-  }
+      speedVal.innerText = `${speed.toFixed(2)}x (${Math.round(speed * 100)}%)`;
+      const semitoneStr = semitones > 0 ? `+${semitones} Semitones` : `${semitones} Semitones`;
+      pitchVal.innerText = semitoneStr;
 
-  // 3. UI 텍스트 업데이트
-  speedVal.innerText = `${speed.toFixed(2)}x (${Math.round(speed * 100)}%)`;
+      let targetIdx = (origKeyIdx + semitones) % 12;
+      if (targetIdx < 0) targetIdx += 12;
+      targetKeyText.innerText = `${noteNames[targetIdx]} (${semitoneStr})`;
+    }
 
-  const semitoneStr = semitones > 0 ? `+${semitones} Semitones` : `${semitones} Semitones`;
-  pitchVal.innerText = semitoneStr;
-
-  let targetIdx = (origKeyIdx + semitones) % 12;
-  if (targetIdx < 0) targetIdx += 12;
-  targetKeyText.innerText = `${noteNames[targetIdx]} (${semitoneStr})`;
-  }
-
-    sliderSpeed.addEventListener('input', applySpeedAndPitch);
-    sliderPitch.addEventListener('input', applySpeedAndPitch);
-    selectOrigKey.addEventListener('change', applySpeedAndPitch);
+    sliderSpeed.addEventListener('input', applyParams);
+    sliderPitch.addEventListener('input', applyParams);
+    selectOrigKey.addEventListener('change', applyParams);
 
     document.getElementById('btn-reset-speed').addEventListener('click', () => {
       sliderSpeed.value = 1.0;
-      applySpeedAndPitch();
+      applyParams();
     });
 
     document.getElementById('btn-reset-pitch').addEventListener('click', () => {
       sliderPitch.value = 0;
-      applySpeedAndPitch();
+      applyParams();
     });
 
     // PWA Service Worker 등록
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js')
-          .then(reg => console.log('Service Worker Registered!'))
-          .catch(err => console.log('Service Worker Failed:', err));
+        navigator.serviceWorker.register('sw.js').catch(() => {});
       });
     }
   </script>
