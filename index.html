@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Musician Copy App</title>
+  <title>Musician Copy App (v4.0)</title>
   
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#4facfe">
@@ -64,13 +64,13 @@
     button:hover { opacity: 0.9; transform: translateY(-1px); }
     
     #waveform { background: #2a2a2a; border-radius: 8px; margin: 20px 0; min-height: 128px; }
-    .status { font-size: 0.95rem; color: #00f2fe; margin-top: 10px; font-weight: bold; }
+    .status { font-size: 0.95rem; color: #00f2fe; margin-top: 10px; font-weight: bold; word-break: break-all; }
   </style>
 </head>
 <body>
 
   <div class="container">
-    <h1>🎸 Musician Copy App (v3.0)</h1>
+    <h1>🎸 Musician Copy App (v4.0 Pro)</h1>
 
     <div class="controls-main">
       <input type="file" id="audio-file" accept="audio/*,video/*">
@@ -147,13 +147,18 @@
       plugins: [wsRegions]
     });
 
-    wavesurfer.setVolume(0); // Wavesurfer 자체 소리 차단 (Tone.js가 재생)
+    wavesurfer.setVolume(0);
 
     let player = null;
     let pitchShiftNode = null;
     let isReady = false;
+    let isPlaying = false;
     let activeRegion = null;
     let loopA = 0;
+    let startTime = 0;
+    let startOffset = 0;
+    let currentAudioTime = 0;
+    let audioDuration = 0;
     let animFrameId = null;
 
     const sliderSpeed = document.getElementById('slider-speed');
@@ -165,63 +170,104 @@
     const btnPlay = document.getElementById('btn-play');
     const statusText = document.getElementById('status-text');
 
-    // 파일 열기
+    // 파일 로드 이벤트
     document.getElementById('audio-file').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
-      statusText.innerText = `[v3.0] 파일 로딩 중: ${file.name}...`;
+      statusText.style.color = '#00f2fe';
+      statusText.innerText = `[v4.0] 오디오 디코딩 중: ${file.name}...`;
       isReady = false;
 
-      if (player) {
-        player.stop();
-        player.dispose();
-        player = null;
-      }
-
-      const url = URL.createObjectURL(file);
-      wavesurfer.load(url);
-    });
-
-    // Wavesurfer 디코딩 완료 시 오디오 노드 연결
-    wavesurfer.on('ready', () => {
       try {
-        const audioBuffer = wavesurfer.getDecodedData();
-        
+        await Tone.start();
+
+        if (player) {
+          player.stop();
+          player.dispose();
+          player = null;
+        }
+
+        const url = URL.createObjectURL(file);
+        wavesurfer.load(url);
+
+        // 데스크톱 사운드카드 주파수(48kHz)로 자동 리샘플링 변환
+        const arrayBuffer = await file.arrayBuffer();
+        const audioBuffer = await Tone.context.decodeAudioData(arrayBuffer);
+
         if (pitchShiftNode) pitchShiftNode.dispose();
         pitchShiftNode = new Tone.PitchShift(0).toDestination();
 
         player = new Tone.Player(audioBuffer);
         player.connect(pitchShiftNode);
 
+        audioDuration = audioBuffer.duration;
+        startOffset = 0;
+        currentAudioTime = 0;
         isReady = true;
+
         applyParams();
-        statusText.innerText = '★ 로딩 완료! [재생 / 일시정지] 버튼을 누르세요.';
+        statusText.style.color = '#00ff88';
+        statusText.innerText = '★ 데스크톱 준비 완료! [재생 / 일시정지] 버튼을 누르세요.';
       } catch (err) {
-        statusText.innerText = `오류 발생: ${err.message}`;
+        console.error(err);
+        statusText.style.color = '#ff4b4b';
+        statusText.innerText = `디코딩 에러: ${err.message || '파일을 다룰 수 없습니다.'}`;
       }
     });
 
-    // 재생 / 일시정지 (데스크톱 오디오 엔진 강제 깨우기)
+    // 재생 및 일시정지
     async function togglePlay() {
       if (!isReady || !player) {
         alert('음원 로딩이 완료될 때까지 기다려주세요.');
         return;
       }
 
-      // 데스크톱 크롬/에지 브라우저 오디오 오토플레이 보안 해제
-      if (Tone.context.state !== 'running') {
-        await Tone.start();
-      }
+      try {
+        if (Tone.context.state !== 'running') {
+          await Tone.start();
+        }
 
-      if (player.state === "started") {
+        if (isPlaying) {
+          stopAudio();
+        } else {
+          startAudio();
+        }
+      } catch (err) {
+        console.error(err);
+        statusText.style.color = '#ff4b4b';
+        statusText.innerText = `재생 에러: ${err.message}`;
+      }
+    }
+
+    function startAudio() {
+      if (!player) return;
+      startTime = Tone.now();
+      player.start(Tone.now(), startOffset);
+      isPlaying = true;
+      btnPlay.innerText = "일시정지";
+      syncPlayhead();
+    }
+
+    function stopAudio() {
+      if (!player) return;
+      player.stop();
+      isPlaying = false;
+      btnPlay.innerText = "재생 / 일시정지";
+      if (animFrameId) cancelAnimationFrame(animFrameId);
+    }
+
+    function seekTo(targetTime) {
+      if (!player || !isReady) return;
+      currentAudioTime = Math.max(0, Math.min(targetTime, audioDuration));
+      startOffset = currentAudioTime;
+      startTime = Tone.now();
+
+      if (isPlaying) {
         player.stop();
-        btnPlay.innerText = "재생 / 일시정지";
-        if (animFrameId) cancelAnimationFrame(animFrameId);
+        player.start(Tone.now(), startOffset);
       } else {
-        player.start();
-        btnPlay.innerText = "일시정지";
-        syncPlayhead();
+        wavesurfer.setTime(startOffset);
       }
     }
 
@@ -229,40 +275,44 @@
 
     // 파형 클릭 시 이동
     wavesurfer.on('interaction', (newTime) => {
-      if (player && isReady) {
-        const wasPlaying = player.state === "started";
-        player.stop();
-        player.seek(newTime);
-        if (wasPlaying) player.start();
-      }
+      seekTo(newTime);
     });
 
-    // 재생 위치 추적 및 A-B 반복
+    // 재생 포지션 연산 및 A-B 구간 반복
     function syncPlayhead() {
-      if (player && player.state === "started") {
-        const currentTime = player.now() - player._startTime;
-        wavesurfer.setTime(currentTime);
+      if (player && isPlaying) {
+        const wallElapsed = Tone.now() - startTime;
+        const speed = parseFloat(sliderSpeed.value);
+        currentAudioTime = startOffset + (wallElapsed * speed);
+
+        wavesurfer.setTime(currentAudioTime);
 
         if (activeRegion) {
-          if (currentTime >= activeRegion.end || currentTime < activeRegion.start) {
-            player.seek(activeRegion.start);
+          if (currentAudioTime >= activeRegion.end || currentAudioTime >= audioDuration) {
+            seekTo(activeRegion.start);
           }
+        } else if (currentAudioTime >= audioDuration) {
+          stopAudio();
+          startOffset = 0;
+          return;
         }
+
         animFrameId = requestAnimationFrame(syncPlayhead);
       }
     }
 
     // A-B 구간 설정
     document.getElementById('btn-set-a').addEventListener('click', () => {
-      if (player) {
-        loopA = player.now() - player._startTime;
+      if (player && isReady) {
+        loopA = currentAudioTime;
+        statusText.style.color = '#00f2fe';
         statusText.innerText = `A 지점 설정: ${loopA.toFixed(2)}초`;
       }
     });
 
     document.getElementById('btn-set-b').addEventListener('click', () => {
-      if (!player) return;
-      const loopB = player.now() - player._startTime;
+      if (!player || !isReady) return;
+      const loopB = currentAudioTime;
       if (loopB <= loopA) return alert('B 지점은 A 지점보다 뒤에 있어야 합니다.');
 
       wsRegions.clearRegions();
@@ -270,18 +320,20 @@
         start: loopA, end: loopB, color: 'rgba(0, 242, 254, 0.3)', drag: true, resize: true
       });
 
-      player.seek(loopA);
-      if (player.state !== "started") togglePlay();
-      statusText.innerText = `구간 반복 설정 중 (${loopA.toFixed(2)}s ~ ${loopB.toFixed(2)}s)`;
+      seekTo(loopA);
+      if (!isPlaying) startAudio();
+      statusText.style.color = '#00f2fe';
+      statusText.innerText = `구간 반복 설정 (${loopA.toFixed(2)}s ~ ${loopB.toFixed(2)}s)`;
     });
 
     document.getElementById('btn-clear-loop').addEventListener('click', () => {
       wsRegions.clearRegions();
       activeRegion = null;
+      statusText.style.color = '#00f2fe';
       statusText.innerText = '구간 반복이 해제되었습니다.';
     });
 
-    // 속도 및 키 조절 공식
+    // 속도 및 피치 적용 (수학적 독립 보정)
     function applyParams() {
       const speed = parseFloat(sliderSpeed.value);
       const targetSemitones = parseInt(sliderPitch.value);
@@ -289,7 +341,6 @@
 
       if (player && pitchShiftNode) {
         player.playbackRate = speed;
-        // 속도 변경 시 발생하는 자연 피치 변동분 상쇄 공식
         const speedPitchOffset = 12 * Math.log2(speed);
         pitchShiftNode.pitch = targetSemitones - speedPitchOffset;
       }
@@ -317,7 +368,6 @@
       applyParams();
     });
 
-    // PWA Service Worker 등록
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js').catch(() => {});
