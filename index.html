@@ -13,7 +13,7 @@
   <script src="https://unpkg.com/wavesurfer.js@7"></script>
   <script src="https://unpkg.com/wavesurfer.js@7/dist/plugins/regions.min.js"></script>
 
-  <!-- Tone.js -->
+  <!-- Tone.js (Web Audio Engine) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 
   <style>
@@ -148,6 +148,9 @@
       plugins: [wsRegions]
     });
 
+    // WaveSurfer 자체 오디오 출력 차단 (소리는 Tone.js 오디오 노드가 담당)
+    wavesurfer.setVolume(0);
+
     let player = null;
     let pitchShiftNode = null;
     let isReady = false;
@@ -164,29 +167,34 @@
     const btnPlay = document.getElementById('btn-play');
     const statusText = document.getElementById('status-text');
 
-    // 음원 로드
-    document.getElementById('audio-file').addEventListener('change', async (e) => {
+    // 파일 로드 이벤트
+    document.getElementById('audio-file').addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
-      statusText.innerText = `파일 디코딩 중: ${file.name}...`;
+      statusText.innerText = `Loading & Decoding: ${file.name}...`;
+      isReady = false;
 
+      if (player) {
+        player.stop();
+        player.dispose();
+        player = null;
+      }
+
+      const url = URL.createObjectURL(file);
+      wavesurfer.load(url);
+    });
+
+    // WaveSurfer 분석 완료 시 단 1회만 디코딩 버퍼 전달받음
+    wavesurfer.on('ready', () => {
       try {
-        if (player) {
-          player.stop();
-          player.dispose();
-          player = null;
+        const audioBuffer = wavesurfer.getDecodedData();
+        if (!audioBuffer) {
+          statusText.innerText = '음원 데이터를 불러오지 못했습니다.';
+          return;
         }
 
-        const url = URL.createObjectURL(file);
-        wavesurfer.load(url);
-
-        // OfflineAudioContext로 데스크톱 자동재생 제한 우회
-        const arrayBuffer = await file.arrayBuffer();
-        const offlineCtx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 44100, 44100);
-        const audioBuffer = await offlineCtx.decodeAudioData(arrayBuffer);
-
-        // Tone.js 노드 연결
+        // Tone.js 노드 구축
         if (pitchShiftNode) pitchShiftNode.dispose();
         pitchShiftNode = new Tone.PitchShift(0).toDestination();
 
@@ -198,13 +206,16 @@
         statusText.innerText = '로딩 완료! [재생 / 일시정지] 버튼을 누르세요.';
       } catch (err) {
         console.error(err);
-        statusText.innerText = `로딩 실패: ${err.message || '파일을 읽을 수 없습니다.'}`;
+        statusText.innerText = `초기화 에러: ${err.message}`;
       }
     });
 
-    // 재생 / 일시정지
+    // 재생 / 일시정지 (데스크톱 오디오 잠금 해제)
     async function togglePlay() {
-      if (!isReady || !player) return;
+      if (!isReady || !player) {
+        alert('음원 파일 로딩이 완료될 때까지 잠시만 기다려주세요.');
+        return;
+      }
 
       try {
         if (Tone.context.state !== 'running') {
@@ -228,7 +239,7 @@
 
     btnPlay.addEventListener('click', togglePlay);
 
-    // 파형 클릭 위치 이동
+    // 파형 클릭 시 재생 위치 이동
     wavesurfer.on('interaction', (newTime) => {
       if (player && isReady) {
         const wasPlaying = player.state === "started";
@@ -238,7 +249,7 @@
       }
     });
 
-    // 재생 위치 추적 및 A-B 루프
+    // 재생 실시간 위치 추적 및 A-B 루프
     function syncPlayhead() {
       if (player && player.state === "started") {
         const currentTime = player.now() - player._startTime;
@@ -282,22 +293,26 @@
       statusText.innerText = '구간 반복이 해제되었습니다.';
     });
 
-    // 속도 및 피치 제어
+    // 속도 및 피치 보정 공식 적용
     function applyParams() {
       const speed = parseFloat(sliderSpeed.value);
-      const semitones = parseInt(sliderPitch.value);
+      const targetSemitones = parseInt(sliderPitch.value);
       const origKeyIdx = parseInt(selectOrigKey.value);
 
       if (player && pitchShiftNode) {
+        // 1. 재생 속도 반영
         player.playbackRate = speed;
-        pitchShiftNode.pitch = semitones;
+        
+        // 2. 속도 변화에 따른 피치 변동분(12 * log2(speed))을 수식으로 보정
+        const speedPitchOffset = 12 * Math.log2(speed);
+        pitchShiftNode.pitch = targetSemitones - speedPitchOffset;
       }
 
       speedVal.innerText = `${speed.toFixed(2)}x (${Math.round(speed * 100)}%)`;
-      const semitoneStr = semitones > 0 ? `+${semitones} Semitones` : `${semitones} Semitones`;
+      const semitoneStr = targetSemitones > 0 ? `+${targetSemitones} Semitones` : `${targetSemitones} Semitones`;
       pitchVal.innerText = semitoneStr;
 
-      let targetIdx = (origKeyIdx + semitones) % 12;
+      let targetIdx = (origKeyIdx + targetSemitones) % 12;
       if (targetIdx < 0) targetIdx += 12;
       targetKeyText.innerText = `${noteNames[targetIdx]} (${semitoneStr})`;
     }
