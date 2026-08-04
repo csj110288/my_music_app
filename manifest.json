@@ -1,0 +1,16 @@
+{
+  "name": "Musician Copy App",
+  "short_name": "CopyApp",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#4facfe",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/461/461238.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
