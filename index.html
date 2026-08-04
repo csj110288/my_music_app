@@ -283,26 +283,31 @@
 
     // 7. SoundTouch 엔진 속도 및 피치 적용
     function applySpeedAndPitch() {
-      const speed = parseFloat(sliderSpeed.value);
-      const semitones = parseInt(sliderPitch.value);
-      const origKeyIdx = parseInt(selectOrigKey.value);
+  const speed = parseFloat(sliderSpeed.value);
+  const semitones = parseInt(sliderPitch.value);
+  const origKeyIdx = parseInt(selectOrigKey.value);
 
-      // SoundTouch 엔진 수치 반영
-      if (soundTouchShifter) {
-        soundTouchShifter.tempo = speed;
-        soundTouchShifter.pitchSemitones = semitones; // 반음 단위 피치 시프트
-      }
+  // 1. 피치 변환 비율 계산 (2^(semitones / 12))
+  const pitchFactor = Math.pow(2, semitones / 12);
 
-      // UI 텍스트 업데이트
-      speedVal.innerText = `${speed.toFixed(2)}x (${Math.round(speed * 100)}%)`;
+  // 2. SoundTouch 엔진 속도 보정 적용
+  if (soundTouchShifter) {
+    soundTouchShifter.pitchSemitones = semitones;
+    
+    // ★ 핵심 수정: 피치가 변할 때 속도가 변하지 않도록 피치 비율(pitchFactor)로 나누어 상쇄해 줍니다!
+    soundTouchShifter.tempo = speed / pitchFactor;
+  }
 
-      const semitoneStr = semitones > 0 ? `+${semitones} Semitones` : `${semitones} Semitones`;
-      pitchVal.innerText = semitoneStr;
+  // 3. UI 텍스트 업데이트
+  speedVal.innerText = `${speed.toFixed(2)}x (${Math.round(speed * 100)}%)`;
 
-      let targetIdx = (origKeyIdx + semitones) % 12;
-      if (targetIdx < 0) targetIdx += 12;
-      targetKeyText.innerText = `${noteNames[targetIdx]} (${semitoneStr})`;
-    }
+  const semitoneStr = semitones > 0 ? `+${semitones} Semitones` : `${semitones} Semitones`;
+  pitchVal.innerText = semitoneStr;
+
+  let targetIdx = (origKeyIdx + semitones) % 12;
+  if (targetIdx < 0) targetIdx += 12;
+  targetKeyText.innerText = `${noteNames[targetIdx]} (${semitoneStr})`;
+  }
 
     sliderSpeed.addEventListener('input', applySpeedAndPitch);
     sliderPitch.addEventListener('input', applySpeedAndPitch);
