@@ -7,13 +7,12 @@
   
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#4facfe">
-  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/461/461238.png">
 
   <!-- Wavesurfer.js & Regions Plugin -->
   <script src="https://unpkg.com/wavesurfer.js@7"></script>
   <script src="https://unpkg.com/wavesurfer.js@7/dist/plugins/regions.min.js"></script>
 
-  <!-- Tone.js (Web Audio Engine) -->
+  <!-- Tone.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 
   <style>
@@ -65,13 +64,13 @@
     button:hover { opacity: 0.9; transform: translateY(-1px); }
     
     #waveform { background: #2a2a2a; border-radius: 8px; margin: 20px 0; min-height: 128px; }
-    .status { font-size: 0.9rem; color: #aaa; margin-top: 10px; word-break: break-all; }
+    .status { font-size: 0.95rem; color: #00f2fe; margin-top: 10px; font-weight: bold; }
   </style>
 </head>
 <body>
 
   <div class="container">
-    <h1>🎸 Musician Copy App</h1>
+    <h1>🎸 Musician Copy App (v3.0)</h1>
 
     <div class="controls-main">
       <input type="file" id="audio-file" accept="audio/*,video/*">
@@ -148,8 +147,7 @@
       plugins: [wsRegions]
     });
 
-    // WaveSurfer 자체 오디오 출력 차단 (소리는 Tone.js 오디오 노드가 담당)
-    wavesurfer.setVolume(0);
+    wavesurfer.setVolume(0); // Wavesurfer 자체 소리 차단 (Tone.js가 재생)
 
     let player = null;
     let pitchShiftNode = null;
@@ -167,12 +165,12 @@
     const btnPlay = document.getElementById('btn-play');
     const statusText = document.getElementById('status-text');
 
-    // 파일 로드 이벤트
-    document.getElementById('audio-file').addEventListener('change', (e) => {
+    // 파일 열기
+    document.getElementById('audio-file').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
-      statusText.innerText = `Loading & Decoding: ${file.name}...`;
+      statusText.innerText = `[v3.0] 파일 로딩 중: ${file.name}...`;
       isReady = false;
 
       if (player) {
@@ -185,16 +183,11 @@
       wavesurfer.load(url);
     });
 
-    // WaveSurfer 분석 완료 시 단 1회만 디코딩 버퍼 전달받음
+    // Wavesurfer 디코딩 완료 시 오디오 노드 연결
     wavesurfer.on('ready', () => {
       try {
         const audioBuffer = wavesurfer.getDecodedData();
-        if (!audioBuffer) {
-          statusText.innerText = '음원 데이터를 불러오지 못했습니다.';
-          return;
-        }
-
-        // Tone.js 노드 구축
+        
         if (pitchShiftNode) pitchShiftNode.dispose();
         pitchShiftNode = new Tone.PitchShift(0).toDestination();
 
@@ -203,43 +196,38 @@
 
         isReady = true;
         applyParams();
-        statusText.innerText = '로딩 완료! [재생 / 일시정지] 버튼을 누르세요.';
+        statusText.innerText = '★ 로딩 완료! [재생 / 일시정지] 버튼을 누르세요.';
       } catch (err) {
-        console.error(err);
-        statusText.innerText = `초기화 에러: ${err.message}`;
+        statusText.innerText = `오류 발생: ${err.message}`;
       }
     });
 
-    // 재생 / 일시정지 (데스크톱 오디오 잠금 해제)
+    // 재생 / 일시정지 (데스크톱 오디오 엔진 강제 깨우기)
     async function togglePlay() {
       if (!isReady || !player) {
-        alert('음원 파일 로딩이 완료될 때까지 잠시만 기다려주세요.');
+        alert('음원 로딩이 완료될 때까지 기다려주세요.');
         return;
       }
 
-      try {
-        if (Tone.context.state !== 'running') {
-          await Tone.start();
-        }
+      // 데스크톱 크롬/에지 브라우저 오디오 오토플레이 보안 해제
+      if (Tone.context.state !== 'running') {
+        await Tone.start();
+      }
 
-        if (player.state === "started") {
-          player.stop();
-          btnPlay.innerText = "재생 / 일시정지";
-          if (animFrameId) cancelAnimationFrame(animFrameId);
-        } else {
-          player.start();
-          btnPlay.innerText = "일시정지";
-          syncPlayhead();
-        }
-      } catch (err) {
-        console.error(err);
-        statusText.innerText = `재생 오류: ${err.message}`;
+      if (player.state === "started") {
+        player.stop();
+        btnPlay.innerText = "재생 / 일시정지";
+        if (animFrameId) cancelAnimationFrame(animFrameId);
+      } else {
+        player.start();
+        btnPlay.innerText = "일시정지";
+        syncPlayhead();
       }
     }
 
     btnPlay.addEventListener('click', togglePlay);
 
-    // 파형 클릭 시 재생 위치 이동
+    // 파형 클릭 시 이동
     wavesurfer.on('interaction', (newTime) => {
       if (player && isReady) {
         const wasPlaying = player.state === "started";
@@ -249,7 +237,7 @@
       }
     });
 
-    // 재생 실시간 위치 추적 및 A-B 루프
+    // 재생 위치 추적 및 A-B 반복
     function syncPlayhead() {
       if (player && player.state === "started") {
         const currentTime = player.now() - player._startTime;
@@ -284,7 +272,7 @@
 
       player.seek(loopA);
       if (player.state !== "started") togglePlay();
-      statusText.innerText = `구간 반복 설정 (${loopA.toFixed(2)}s ~ ${loopB.toFixed(2)}s)`;
+      statusText.innerText = `구간 반복 설정 중 (${loopA.toFixed(2)}s ~ ${loopB.toFixed(2)}s)`;
     });
 
     document.getElementById('btn-clear-loop').addEventListener('click', () => {
@@ -293,17 +281,15 @@
       statusText.innerText = '구간 반복이 해제되었습니다.';
     });
 
-    // 속도 및 피치 보정 공식 적용
+    // 속도 및 키 조절 공식
     function applyParams() {
       const speed = parseFloat(sliderSpeed.value);
       const targetSemitones = parseInt(sliderPitch.value);
       const origKeyIdx = parseInt(selectOrigKey.value);
 
       if (player && pitchShiftNode) {
-        // 1. 재생 속도 반영
         player.playbackRate = speed;
-        
-        // 2. 속도 변화에 따른 피치 변동분(12 * log2(speed))을 수식으로 보정
+        // 속도 변경 시 발생하는 자연 피치 변동분 상쇄 공식
         const speedPitchOffset = 12 * Math.log2(speed);
         pitchShiftNode.pitch = targetSemitones - speedPitchOffset;
       }
@@ -331,6 +317,7 @@
       applyParams();
     });
 
+    // PWA Service Worker 등록
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js').catch(() => {});
