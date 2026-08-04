@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Musician Copy App</title>
+  <title>Musician Copy App (SoundTouch Engine)</title>
   
   <!-- PWA Manifest & Meta Tags -->
   <link rel="manifest" href="manifest.json">
@@ -13,6 +13,9 @@
   <!-- Wavesurfer.js & Regions Plugin -->
   <script src="https://unpkg.com/wavesurfer.js@7"></script>
   <script src="https://unpkg.com/wavesurfer.js@7/dist/plugins/regions.min.js"></script>
+
+  <!-- SoundTouchJS (고품질 WSOLA 타임스트레치 & 피치시프트 엔진) -->
+  <script src="https://cdn.jsdelivr.net/npm/soundtouchjs@0.1.30/dist/soundtouch.min.js"></script>
 
   <style>
     * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -69,7 +72,7 @@
 <body>
 
   <div class="container">
-    <h1>🎸 Musician Copy App (PWA)</h1>
+    <h1>🎸 Musician Copy App (SoundTouch Engine)</h1>
 
     <div class="controls-main">
       <input type="file" id="audio-file" accept="audio/*,video/*">
@@ -132,7 +135,6 @@
   </div>
 
   <script>
-    // 영문 음이름 배열 (12반음)
     const noteNames = ["C", "C# / Db", "D", "D# / Eb", "E", "F", "F# / Gb", "G", "G# / Ab", "A", "A# / Bb", "B"];
 
     const wsRegions = WaveSurfer.Regions.create();
@@ -144,51 +146,133 @@
       cursorWidth: 2,
       height: 128,
       responsive: true,
+      interact: true,
       plugins: [wsRegions]
     });
 
+    // SoundTouch 오디오 엔진 변수
+    let audioCtx = null;
+    let soundTouchShifter = null;
+    let audioBuffer = null;
+    let isPlaying = false;
     let activeRegion = null;
     let loopA = 0;
 
-    // 파일 열기
+    // UI 요소
+    const sliderSpeed = document.getElementById('slider-speed');
+    const speedVal = document.getElementById('speed-val');
+    const sliderPitch = document.getElementById('slider-pitch');
+    const pitchVal = document.getElementById('pitch-val');
+    const selectOrigKey = document.getElementById('select-orig-key');
+    const targetKeyText = document.getElementById('target-key-text');
+    const btnPlay = document.getElementById('btn-play');
+
+    // 1. 파일 선택 이벤트
     document.getElementById('audio-file').addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (file) {
-        document.getElementById('status-text').innerText = `Loading: ${file.name}...`;
+        document.getElementById('status-text').innerText = `Loading & Decoding: ${file.name}...`;
+        if (isPlaying) stopAudio();
         const url = URL.createObjectURL(file);
         wavesurfer.load(url);
       }
     });
 
-    wavesurfer.on('ready', () => {
-      document.getElementById('status-text').innerText = 'Ready! Play and adjust speed/pitch.';
+    // 2. 음원 로드 완료 시 SoundTouch 엔진 초기화
+    wavesurfer.on('ready', async () => {
+      audioBuffer = wavesurfer.getDecodedData();
+      
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+
+      if (soundTouchShifter) {
+        soundTouchShifter.disconnect();
+      }
+
+      // SoundTouch PitchShifter 인스턴스 생성 (버퍼 크기 4096)
+      soundTouchShifter = new soundtouch.PitchShifter(audioCtx, audioBuffer, 4096);
+      
       applySpeedAndPitch();
+      document.getElementById('status-text').innerText = 'SoundTouch 고품질 피치 엔진 로드 완료!';
     });
 
-    document.getElementById('btn-play').addEventListener('click', () => wavesurfer.playPause());
+    // 3. 재생 / 일시정지 제어
+    function togglePlay() {
+      if (!soundTouchShifter) return;
 
-    // 구간 반복
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+
+      if (isPlaying) {
+        stopAudio();
+      } else {
+        startAudio();
+      }
+    }
+
+    function startAudio() {
+      if (!soundTouchShifter) return;
+      soundTouchShifter.connect();
+      isPlaying = true;
+      btnPlay.innerText = "일시정지";
+    }
+
+    function stopAudio() {
+      if (!soundTouchShifter) return;
+      soundTouchShifter.disconnect();
+      isPlaying = false;
+      btnPlay.innerText = "재생 / 일시정지";
+    }
+
+    btnPlay.addEventListener('click', togglePlay);
+
+    // 4. 파형 클릭 시 재생 위치 이동 동기화
+    wavesurfer.on('interaction', (newTime) => {
+      if (soundTouchShifter) {
+        soundTouchShifter.timePlayed = newTime;
+      }
+    });
+
+    // 5. 실시간 재생 위치 및 A-B 루프 모니터링 (30FPS)
+    function syncPlayheadAndLoop() {
+      if (isPlaying && soundTouchShifter) {
+        const currentTime = soundTouchShifter.timePlayed;
+        wavesurfer.setTime(currentTime);
+
+        // A-B 구간 반복 제어
+        if (activeRegion) {
+          if (currentTime >= activeRegion.end || currentTime < activeRegion.start) {
+            soundTouchShifter.timePlayed = activeRegion.start;
+          }
+        }
+      }
+      requestAnimationFrame(syncPlayheadAndLoop);
+    }
+    requestAnimationFrame(syncPlayheadAndLoop);
+
+    // 6. A-B 구간 반복 버튼
     document.getElementById('btn-set-a').addEventListener('click', () => {
-      loopA = wavesurfer.getCurrentTime();
-      document.getElementById('status-text').innerText = `A-Point Set: ${loopA.toFixed(2)}s`;
+      if (soundTouchShifter) {
+        loopA = soundTouchShifter.timePlayed;
+        document.getElementById('status-text').innerText = `A-Point Set: ${loopA.toFixed(2)}s`;
+      }
     });
 
     document.getElementById('btn-set-b').addEventListener('click', () => {
-      const loopB = wavesurfer.getCurrentTime();
+      if (!soundTouchShifter) return;
+      const loopB = soundTouchShifter.timePlayed;
       if (loopB <= loopA) return alert('B point must be after A point.');
+      
       wsRegions.clearRegions();
       activeRegion = wsRegions.addRegion({
         start: loopA, end: loopB, color: 'rgba(0, 242, 254, 0.3)', drag: true, resize: true
       });
-      wavesurfer.setTime(loopA);
-      wavesurfer.play();
-    });
 
-    wsRegions.on('region-out', (region) => {
-      if (region === activeRegion) {
-        wavesurfer.setTime(region.start);
-        wavesurfer.play();
-      }
+      soundTouchShifter.timePlayed = loopA;
+      if (!isPlaying) startAudio();
+      document.getElementById('status-text').innerText = `Loop Set (${loopA.toFixed(2)}s ~ ${loopB.toFixed(2)}s)`;
     });
 
     document.getElementById('btn-clear-loop').addEventListener('click', () => {
@@ -197,41 +281,27 @@
       document.getElementById('status-text').innerText = 'Loop cleared.';
     });
 
-    // 컨트롤 슬라이더
-    const sliderSpeed = document.getElementById('slider-speed');
-    const speedVal = document.getElementById('speed-val');
-    const sliderPitch = document.getElementById('slider-pitch');
-    const pitchVal = document.getElementById('pitch-val');
-    const selectOrigKey = document.getElementById('select-orig-key');
-    const targetKeyText = document.getElementById('target-key-text');
-
+    // 7. SoundTouch 엔진 속도 및 피치 적용
     function applySpeedAndPitch() {
       const speed = parseFloat(sliderSpeed.value);
       const semitones = parseInt(sliderPitch.value);
       const origKeyIdx = parseInt(selectOrigKey.value);
 
-      const mediaEl = wavesurfer.getMediaElement();
-      if (mediaEl) mediaEl.preservesPitch = true;
-      wavesurfer.setPlaybackRate(speed);
-
-      if (mediaEl) {
-        const pitchFactor = Math.pow(2, semitones / 12);
-        mediaEl.playbackRate = speed * pitchFactor;
+      // SoundTouch 엔진 수치 반영
+      if (soundTouchShifter) {
+        soundTouchShifter.tempo = speed;
+        soundTouchShifter.pitchSemitones = semitones; // 반음 단위 피치 시프트
       }
 
-      // 1. 속도 표시
+      // UI 텍스트 업데이트
       speedVal.innerText = `${speed.toFixed(2)}x (${Math.round(speed * 100)}%)`;
 
-      // 2. 반음(Semitone) 표기
       const semitoneStr = semitones > 0 ? `+${semitones} Semitones` : `${semitones} Semitones`;
       pitchVal.innerText = semitoneStr;
 
-      // 3. 영문 타겟 키 계산 (C, C#, D...)
       let targetIdx = (origKeyIdx + semitones) % 12;
       if (targetIdx < 0) targetIdx += 12;
-      
-      const targetNoteName = noteNames[targetIdx];
-      targetKeyText.innerText = `${targetNoteName} (${semitoneStr})`;
+      targetKeyText.innerText = `${noteNames[targetIdx]} (${semitoneStr})`;
     }
 
     sliderSpeed.addEventListener('input', applySpeedAndPitch);
@@ -252,8 +322,8 @@
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js')
-          .then(reg => console.log('Service Worker Registered!', reg))
-          .catch(err => console.log('Service Worker Registration Failed:', err));
+          .then(reg => console.log('Service Worker Registered!'))
+          .catch(err => console.log('Service Worker Failed:', err));
       });
     }
   </script>
