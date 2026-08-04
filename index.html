@@ -3,9 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Musician Copy App (Pro DSP Engine)</title>
+  <title>Musician Copy App</title>
   
-  <!-- PWA Manifest & Meta Tags -->
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#4facfe">
   <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/461/461238.png">
@@ -14,7 +13,7 @@
   <script src="https://unpkg.com/wavesurfer.js@7"></script>
   <script src="https://unpkg.com/wavesurfer.js@7/dist/plugins/regions.min.js"></script>
 
-  <!-- Tone.js (글로벌 표준 Web Audio DSP 프레임워크) -->
+  <!-- Tone.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 
   <style>
@@ -66,13 +65,13 @@
     button:hover { opacity: 0.9; transform: translateY(-1px); }
     
     #waveform { background: #2a2a2a; border-radius: 8px; margin: 20px 0; min-height: 128px; }
-    .status { font-size: 0.9rem; color: #aaa; margin-top: 10px; }
+    .status { font-size: 0.9rem; color: #aaa; margin-top: 10px; word-break: break-all; }
   </style>
 </head>
 <body>
 
   <div class="container">
-    <h1>🎸 Musician Copy App (Pro DSP Engine)</h1>
+    <h1>🎸 Musician Copy App</h1>
 
     <div class="controls-main">
       <input type="file" id="audio-file" accept="audio/*,video/*">
@@ -136,7 +135,6 @@
   <script>
     const noteNames = ["C", "C# / Db", "D", "D# / Eb", "E", "F", "F# / Gb", "G", "G# / Ab", "A", "A# / Bb", "B"];
 
-    // 1. Wavesurfer (시각화 전용)
     const wsRegions = WaveSurfer.Regions.create();
     const wavesurfer = WaveSurfer.create({
       container: '#waveform',
@@ -150,15 +148,13 @@
       plugins: [wsRegions]
     });
 
-    // 2. Tone.js 전문 DSP 노드 변수
     let player = null;
     let pitchShiftNode = null;
-    let isToneReady = false;
+    let isReady = false;
     let activeRegion = null;
     let loopA = 0;
     let animFrameId = null;
 
-    // UI 요소
     const sliderSpeed = document.getElementById('slider-speed');
     const speedVal = document.getElementById('speed-val');
     const sliderPitch = document.getElementById('slider-pitch');
@@ -168,63 +164,73 @@
     const btnPlay = document.getElementById('btn-play');
     const statusText = document.getElementById('status-text');
 
-    // 3. 파일 로딩 및 Tone.js 연결
+    // 음원 로드
     document.getElementById('audio-file').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
-      statusText.innerText = `음원 분석 및 디코딩 중: ${file.name}...`;
+      statusText.innerText = `파일 디코딩 중: ${file.name}...`;
 
-      if (player) {
-        player.stop();
-        player.dispose();
+      try {
+        if (player) {
+          player.stop();
+          player.dispose();
+          player = null;
+        }
+
+        const url = URL.createObjectURL(file);
+        wavesurfer.load(url);
+
+        // OfflineAudioContext로 데스크톱 자동재생 제한 우회
+        const arrayBuffer = await file.arrayBuffer();
+        const offlineCtx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 44100, 44100);
+        const audioBuffer = await offlineCtx.decodeAudioData(arrayBuffer);
+
+        // Tone.js 노드 연결
+        if (pitchShiftNode) pitchShiftNode.dispose();
+        pitchShiftNode = new Tone.PitchShift(0).toDestination();
+
+        player = new Tone.Player(audioBuffer);
+        player.connect(pitchShiftNode);
+
+        isReady = true;
+        applyParams();
+        statusText.innerText = '로딩 완료! [재생 / 일시정지] 버튼을 누르세요.';
+      } catch (err) {
+        console.error(err);
+        statusText.innerText = `로딩 실패: ${err.message || '파일을 읽을 수 없습니다.'}`;
       }
-
-      const url = URL.createObjectURL(file);
-      wavesurfer.load(url);
-
-      // Tone.js DSP 오디오 노드 구축
-      const arrayBuffer = await file.arrayBuffer();
-      const audioBuffer = await Tone.context.decodeAudioData(arrayBuffer);
-
-      // PitchShift 전용 노드 생성 및 마스터 출력 연결
-      if (pitchShiftNode) pitchShiftNode.dispose();
-      pitchShiftNode = new Tone.PitchShift(0).toDestination();
-
-      // GrainPlayer 생성 (피치와 템포가 100% 완전 분리되는 알고리즘 적용)
-      player = new Tone.GrainPlayer(audioBuffer);
-      player.grainSize = 0.1;
-      player.overlap = 0.05;
-      player.connect(pitchShiftNode);
-
-      isToneReady = true;
-      applyParams();
-      statusText.innerText = '로딩 완료! 데스크톱/모바일 재생 준비 끝.';
     });
 
-    // 4. 재생 / 일시정지 (데스크톱 오디오 잠금 해제 로직 포함)
+    // 재생 / 일시정지
     async function togglePlay() {
-      if (!isToneReady || !player) return;
+      if (!isReady || !player) return;
 
-      // 데스크톱 브라우저 오디오 맥락(Context) 활성화
-      await Tone.start();
+      try {
+        if (Tone.context.state !== 'running') {
+          await Tone.start();
+        }
 
-      if (player.state === "started") {
-        player.stop();
-        btnPlay.innerText = "재생 / 일시정지";
-        if (animFrameId) cancelAnimationFrame(animFrameId);
-      } else {
-        player.start();
-        btnPlay.innerText = "일시정지";
-        syncPlayhead();
+        if (player.state === "started") {
+          player.stop();
+          btnPlay.innerText = "재생 / 일시정지";
+          if (animFrameId) cancelAnimationFrame(animFrameId);
+        } else {
+          player.start();
+          btnPlay.innerText = "일시정지";
+          syncPlayhead();
+        }
+      } catch (err) {
+        console.error(err);
+        statusText.innerText = `재생 오류: ${err.message}`;
       }
     }
 
     btnPlay.addEventListener('click', togglePlay);
 
-    // 5. 파형 클릭 시 재생 위치 이동 동기화
+    // 파형 클릭 위치 이동
     wavesurfer.on('interaction', (newTime) => {
-      if (player && isToneReady) {
+      if (player && isReady) {
         const wasPlaying = player.state === "started";
         player.stop();
         player.seek(newTime);
@@ -232,13 +238,12 @@
       }
     });
 
-    // 6. 실시간 위치 및 A-B 루프 추적
+    // 재생 위치 추적 및 A-B 루프
     function syncPlayhead() {
       if (player && player.state === "started") {
-        const currentTime = player.now() - player._startTime + player.offset;
+        const currentTime = player.now() - player._startTime;
         wavesurfer.setTime(currentTime);
 
-        // A-B 구간 반복
         if (activeRegion) {
           if (currentTime >= activeRegion.end || currentTime < activeRegion.start) {
             player.seek(activeRegion.start);
@@ -248,17 +253,17 @@
       }
     }
 
-    // 7. A-B 구간 설정
+    // A-B 구간 설정
     document.getElementById('btn-set-a').addEventListener('click', () => {
       if (player) {
-        loopA = player.now() - player._startTime + player.offset;
+        loopA = player.now() - player._startTime;
         statusText.innerText = `A 지점 설정: ${loopA.toFixed(2)}초`;
       }
     });
 
     document.getElementById('btn-set-b').addEventListener('click', () => {
       if (!player) return;
-      const loopB = player.now() - player._startTime + player.offset;
+      const loopB = player.now() - player._startTime;
       if (loopB <= loopA) return alert('B 지점은 A 지점보다 뒤에 있어야 합니다.');
 
       wsRegions.clearRegions();
@@ -277,16 +282,14 @@
       statusText.innerText = '구간 반복이 해제되었습니다.';
     });
 
-    // 8. 속도 및 피치 적용 (독립 제어)
+    // 속도 및 피치 제어
     function applyParams() {
       const speed = parseFloat(sliderSpeed.value);
       const semitones = parseInt(sliderPitch.value);
       const origKeyIdx = parseInt(selectOrigKey.value);
 
       if (player && pitchShiftNode) {
-        // GrainPlayer 속도 제어 (피치 변화 없음)
         player.playbackRate = speed;
-        // PitchShift 노드 피치 제어 (속도 변화 없음)
         pitchShiftNode.pitch = semitones;
       }
 
@@ -313,7 +316,6 @@
       applyParams();
     });
 
-    // PWA Service Worker 등록
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js').catch(() => {});
