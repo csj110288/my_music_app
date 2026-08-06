@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Musician Copy & Tuner App (v4.2 Pro)</title>
+  <title>Musician Copy App (v4.1 Pro)</title>
   
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#4facfe">
@@ -61,107 +61,22 @@
       border-radius: 8px; cursor: pointer; transition: 0.2s; font-size: 0.9rem;
     }
     button.secondary { background: #333; color: #fff; border: 1px solid #555; }
-    button.tuner-btn { background: linear-gradient(to right, #ff0844, #ffb199); color: #fff; }
     button:hover { opacity: 0.9; transform: translateY(-1px); }
     
+    /* 슬림해진 파형 콘솔 영역 (80px) */
     #waveform { background: #2a2a2a; border-radius: 8px; margin: 12px 0; min-height: 80px; overflow: hidden; }
     .status { font-size: 0.9rem; color: #00f2fe; margin-top: 8px; font-weight: bold; word-break: break-all; }
-
-    /* --- 튜너 섹션 스타일 --- */
-    .tuner-card {
-      background: #25252d;
-      border: 2px solid #4facfe;
-      border-radius: 14px;
-      padding: 16px;
-      margin-bottom: 16px;
-      display: none; /* 기본 숨김, 버튼 클릭 시 토글 */
-    }
-    .tuner-card.active { display: block; }
-    
-    .tuner-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-    .tuner-note-display { font-size: 3.2rem; font-weight: 900; color: #ffffff; line-height: 1; }
-    .tuner-freq { font-size: 1rem; color: #aaa; margin-top: 4px; }
-    
-    .gauge-bar-container {
-      width: 100%;
-      height: 16px;
-      background: #111;
-      border-radius: 8px;
-      position: relative;
-      margin: 16px 0;
-      overflow: hidden;
-    }
-    .gauge-center-line {
-      position: absolute;
-      left: 50%;
-      top: 0;
-      bottom: 0;
-      width: 4px;
-      background: #00f2fe;
-      transform: translateX(-50%);
-      z-index: 2;
-    }
-    .gauge-pointer {
-      position: absolute;
-      top: 0;
-      bottom: 0;
-      width: 8px;
-      background: #ff4b4b;
-      border-radius: 4px;
-      left: 50%;
-      transform: translateX(-50%);
-      transition: left 0.1s ease-out, background-color 0.1s;
-      z-index: 3;
-    }
-
-    .string-buttons { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
-    .string-btn {
-      background: #333; color: #ccc; border: 1px solid #555; padding: 6px 12px; border-radius: 20px; font-size: 0.85rem;
-    }
-    .string-btn.active { background: #00f2fe; color: #000; font-weight: bold; border-color: #00f2fe; }
   </style>
 </head>
 <body>
 
   <div class="container">
-    <h1>🎸 Musician Copy & Tuner App</h1>
+    <h1>🎸 Musician Copy App (v4.1)</h1>
 
     <div class="controls-main">
       <input type="file" id="audio-file" accept="audio/*,video/*">
       <button id="btn-play">재생 / 일시정지</button>
       <button id="btn-clear-loop" class="secondary">구간 해제</button>
-      <button id="btn-toggle-tuner" class="tuner-btn">🎙️ 실시간 튜너 켜기/끄기</button>
-    </div>
-
-    <!-- 실시간 악기 튜너 패널 -->
-    <div class="tuner-card" id="tuner-card">
-      <div class="tuner-header">
-        <span style="font-weight: bold; color: #ffb199;">실시간 악기 튜너</span>
-        <div>
-          <label style="font-size: 0.85rem; color: #ccc;">악기 선택: </label>
-          <select id="tuner-preset">
-            <option value="chromatic">크로매틱 (모든 음)</option>
-            <option value="guitar">6현 기타 (E2 A2 D3 G3 B3 E4)</option>
-            <option value="bass4">4현 베이스 (E1 A1 D2 G2)</option>
-            <option value="bass5" selected>5현 베이스 (B0 E1 A1 D2 G2)</option>
-          </select>
-        </div>
-      </div>
-
-      <!-- 음표 및 주파수 메인 디스플레이 -->
-      <div class="tuner-note-display" id="tuner-note">--</div>
-      <div class="tuner-freq" id="tuner-freq">0.0 Hz</div>
-
-      <!-- Cents 바 바늘 게이지 -->
-      <div class="gauge-bar-container">
-        <div class="gauge-center-line"></div>
-        <div class="gauge-pointer" id="gauge-pointer"></div>
-      </div>
-
-      <div style="font-size: 0.8rem; color: #888;" id="tuner-cents-text">마이크 입력을 기다리는 중...</div>
-      
-      <!-- 기준 개방현 음표 가이드 -->
-      <div class="string-buttons" id="string-guide-box"></div>
     </div>
 
     <div class="slider-panel">
@@ -220,14 +135,15 @@
       </div>
     </div>
 
+    <!-- 파형 콘솔 (80px 높이) -->
     <div id="waveform"></div>
     <div class="status" id="status-text">음원 또는 영상 파일(MP3, MP4 등)을 선택하세요.</div>
   </div>
 
   <script>
-    const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    const noteNames = ["C", "C# / Db", "D", "D# / Eb", "E", "F", "F# / Gb", "G", "G# / Ab", "A", "A# / Bb", "B"];
 
-    // 1. Wavesurfer 객체
+    // 1. Wavesurfer (높이 80px 설정)
     const wsRegions = WaveSurfer.Regions.create();
     const wavesurfer = WaveSurfer.create({
       container: '#waveform',
@@ -235,13 +151,17 @@
       progressColor: '#00f2fe',
       cursorColor: '#ff4b4b',
       cursorWidth: 2,
-      height: 80,
+      height: 80, // 요청하신 대로 컴팩트한 높이로 변경
       responsive: true,
       interact: true,
       plugins: [wsRegions]
     });
 
-    wsRegions.enableDragSelection({ color: 'rgba(0, 242, 254, 0.3)' });
+    // 마우스 드래그로 파형 위에 즉시 구간 반복 박스 생성 기능 활성화
+    wsRegions.enableDragSelection({
+      color: 'rgba(0, 242, 254, 0.3)',
+    });
+
     wavesurfer.setVolume(0);
 
     let player = null;
@@ -266,13 +186,22 @@
     const btnPlay = document.getElementById('btn-play');
     const statusText = document.getElementById('status-text');
 
+    // 드래그로 구간을 새로 만들 때 기존 구간은 깔끔하게 정리
     wsRegions.on('region-created', (region) => {
-      wsRegions.getRegions().forEach((r) => { if (r !== region) r.remove(); });
+      const regions = wsRegions.getRegions();
+      regions.forEach((r) => {
+        if (r !== region) r.remove();
+      });
       activeRegion = region;
       seekTo(region.start);
       if (!isPlaying) startAudio();
       statusText.style.color = '#00f2fe';
       statusText.innerText = `구간 반복 설정 (${region.start.toFixed(2)}s ~ ${region.end.toFixed(2)}s)`;
+    });
+
+    wsRegions.on('region-updated', (region) => {
+      activeRegion = region;
+      statusText.innerText = `구간 변경됨 (${region.start.toFixed(2)}s ~ ${region.end.toFixed(2)}s)`;
     });
 
     // 파일 로드 이벤트
@@ -286,7 +215,12 @@
 
       try {
         await Tone.start();
-        if (player) { player.stop(); player.dispose(); player = null; }
+
+        if (player) {
+          player.stop();
+          player.dispose();
+          player = null;
+        }
 
         const url = URL.createObjectURL(file);
         wavesurfer.load(url);
@@ -309,15 +243,34 @@
         statusText.style.color = '#00ff88';
         statusText.innerText = '★ 준비 완료! 파형을 마우스로 드래그하여 반복 구간을 정해보세요.';
       } catch (err) {
+        console.error(err);
         statusText.style.color = '#ff4b4b';
-        statusText.innerText = `디코딩 에러: ${err.message}`;
+        statusText.innerText = `디코딩 에러: ${err.message || '파일을 다룰 수 없습니다.'}`;
       }
     });
 
+    // 재생 / 일시정지
     async function togglePlay() {
-      if (!isReady || !player) return alert('음원 로딩이 완료될 때까지 기다려주세요.');
-      if (Tone.context.state !== 'running') await Tone.start();
-      if (isPlaying) stopAudio(); else startAudio();
+      if (!isReady || !player) {
+        alert('음원 로딩이 완료될 때까지 기다려주세요.');
+        return;
+      }
+
+      try {
+        if (Tone.context.state !== 'running') {
+          await Tone.start();
+        }
+
+        if (isPlaying) {
+          stopAudio();
+        } else {
+          startAudio();
+        }
+      } catch (err) {
+        console.error(err);
+        statusText.style.color = '#ff4b4b';
+        statusText.innerText = `재생 에러: ${err.message}`;
+      }
     }
 
     function startAudio() {
@@ -342,33 +295,54 @@
       currentAudioTime = Math.max(0, Math.min(targetTime, audioDuration));
       startOffset = currentAudioTime;
       startTime = Tone.now();
-      if (isPlaying) { player.stop(); player.start(Tone.now(), startOffset); }
-      else { wavesurfer.setTime(startOffset); }
+
+      if (isPlaying) {
+        player.stop();
+        player.start(Tone.now(), startOffset);
+      } else {
+        wavesurfer.setTime(startOffset);
+      }
     }
 
     btnPlay.addEventListener('click', togglePlay);
-    wavesurfer.on('interaction', (newTime) => seekTo(newTime));
 
+    // 파형 클릭 시 이동
+    wavesurfer.on('interaction', (newTime) => {
+      seekTo(newTime);
+    });
+
+    // 재생 위치 추적 및 A-B 루프
     function syncPlayhead() {
       if (player && isPlaying) {
         const wallElapsed = Tone.now() - startTime;
-        currentAudioTime = startOffset + (wallElapsed * parseFloat(sliderSpeed.value));
+        const speed = parseFloat(sliderSpeed.value);
+        currentAudioTime = startOffset + (wallElapsed * speed);
+
         wavesurfer.setTime(currentAudioTime);
 
-        if (activeRegion && (currentAudioTime >= activeRegion.end || currentAudioTime >= audioDuration)) {
-          seekTo(activeRegion.start);
+        if (activeRegion) {
+          if (currentAudioTime >= activeRegion.end || currentAudioTime >= audioDuration) {
+            seekTo(activeRegion.start);
+          }
         } else if (currentAudioTime >= audioDuration) {
-          stopAudio(); startOffset = 0; return;
+          stopAudio();
+          startOffset = 0;
+          return;
         }
+
         animFrameId = requestAnimationFrame(syncPlayhead);
       }
     }
 
+    // 구간 해제 버튼
     document.getElementById('btn-clear-loop').addEventListener('click', () => {
-      wsRegions.clearRegions(); activeRegion = null;
+      wsRegions.clearRegions();
+      activeRegion = null;
+      statusText.style.color = '#00f2fe';
       statusText.innerText = '구간 반복이 해제되었습니다.';
     });
 
+    // 속도 및 피치 적용
     function applyParams() {
       const speed = parseFloat(sliderSpeed.value);
       const targetSemitones = parseInt(sliderPitch.value);
@@ -376,7 +350,8 @@
 
       if (player && pitchShiftNode) {
         player.playbackRate = speed;
-        pitchShiftNode.pitch = targetSemitones - (12 * Math.log2(speed));
+        const speedPitchOffset = 12 * Math.log2(speed);
+        pitchShiftNode.pitch = targetSemitones - speedPitchOffset;
       }
 
       speedVal.innerText = `${speed.toFixed(2)}x (${Math.round(speed * 100)}%)`;
@@ -388,6 +363,7 @@
       targetKeyText.innerText = `${noteNames[targetIdx]} (${semitoneStr})`;
     }
 
+    // 파형 Zoom 슬라이더 이벤트
     sliderZoom.addEventListener('input', (e) => {
       const zoomPx = parseInt(e.target.value);
       wavesurfer.zoom(zoomPx);
@@ -398,186 +374,20 @@
     sliderPitch.addEventListener('input', applyParams);
     selectOrigKey.addEventListener('change', applyParams);
 
-    // ==========================================
-    // 2. 실시간 악기 튜너 (Autocorrelation) 엔진
-    // ==========================================
-    let micAudioCtx = null;
-    let micAnalyser = null;
-    let micStream = null;
-    let isTunerActive = false;
-
-    const tunerCard = document.getElementById('tuner-card');
-    const tunerNoteEl = document.getElementById('tuner-note');
-    const tunerFreqEl = document.getElementById('tuner-freq');
-    const gaugePointer = document.getElementById('gauge-pointer');
-    const tunerCentsText = document.getElementById('tuner-cents-text');
-    const tunerPresetSelect = document.getElementById('tuner-preset');
-    const stringGuideBox = document.getElementById('string-guide-box');
-
-    // 프리셋별 기준 음 정보 (Hz 및 음이름)
-    const presetNotes = {
-      guitar: [
-        { name: "E2", freq: 82.41 }, { name: "A2", freq: 110.00 }, { name: "D3", freq: 146.83 },
-        { name: "G3", freq: 196.00 }, { name: "B3", freq: 246.94 }, { name: "E4", freq: 329.63 }
-      ],
-      bass4: [
-        { name: "E1", freq: 41.20 }, { name: "A1", freq: 55.00 }, { name: "D2", freq: 73.42 }, { name: "G2", freq: 98.00 }
-      ],
-      bass5: [
-        { name: "B0", freq: 30.87 }, { name: "E1", freq: 41.20 }, { name: "A1", freq: 55.00 },
-        { name: "D2", freq: 73.42 }, { name: "G2", freq: 98.00 }
-      ]
-    };
-
-    function updateStringGuideUI() {
-      stringGuideBox.innerHTML = '';
-      const presetKey = tunerPresetSelect.value;
-      if (presetNotes[presetKey]) {
-        presetNotes[presetKey].forEach(n => {
-          const btn = document.createElement('div');
-          btn.className = 'string-btn';
-          btn.innerText = `${n.name} (${n.freq.toFixed(1)}Hz)`;
-          btn.id = `string-${n.name}`;
-          stringGuideBox.appendChild(btn);
-        });
-      }
-    }
-    tunerPresetSelect.addEventListener('change', updateStringGuideUI);
-    updateStringGuideUI();
-
-    document.getElementById('btn-toggle-tuner').addEventListener('click', async () => {
-      isTunerActive = !isTunerActive;
-      if (isTunerActive) {
-        tunerCard.classList.add('active');
-        await startTunerMic();
-      } else {
-        tunerCard.classList.remove('active');
-        stopTunerMic();
-      }
+    document.getElementById('btn-reset-speed').addEventListener('click', () => {
+      sliderSpeed.value = 1.0;
+      applyParams();
     });
 
-    async function startTunerMic() {
-      try {
-        micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        micAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        
-        const source = micAudioCtx.createMediaStreamSource(micStream);
-        micAnalyser = micAudioCtx.createAnalyser();
-        
-        // 5현 베이스 Low B(30.87Hz) 포착을 위해 FFT 버퍼 크기 4096 설정
-        micAnalyser.fftSize = 4096;
-        source.connect(micAnalyser);
-
-        updateTuner();
-      } catch (err) {
-        alert("마이크 접근 권한이 필요합니다: " + err.message);
-        isTunerActive = false;
-        tunerCard.classList.remove('active');
-      }
-    }
-
-    function stopTunerMic() {
-      if (micStream) micStream.getTracks().forEach(track => track.stop());
-      if (micAudioCtx) micAudioCtx.close();
-      micStream = null;
-      micAudioCtx = null;
-    }
-
-    // 자기상관(Autocorrelation) 주파수 추정 알고리즘
-    function autoCorrelate(buf, sampleRate) {
-      let SIZE = buf.length;
-      let rms = 0;
-      for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
-      rms = Math.sqrt(rms / SIZE);
-      if (rms < 0.01) return -1; // 잡음 제거
-
-      let r1 = 0, r2 = SIZE - 1, thres = 0.2;
-      for (let i = 0; i < SIZE / 2; i++) {
-        if (Math.abs(buf[i]) < thres) { r1 = i; break; }
-      }
-      for (let i = 1; i < SIZE / 2; i++) {
-        if (Math.abs(buf[SIZE - i]) < thres) { r2 = SIZE - i; break; }
-      }
-
-      buf = buf.slice(r1, r2);
-      SIZE = buf.length;
-
-      let c = new Float32Array(SIZE);
-      for (let i = 0; i < SIZE; i++) {
-        for (let j = 0; j < SIZE - i; j++) {
-          c[i] = c[i] + buf[j] * buf[j + i];
-        }
-      }
-
-      let d = 0;
-      while (c[d] > c[d + 1]) d++;
-      let maxval = -1, maxpos = -1;
-      for (let i = d; i < SIZE; i++) {
-        if (c[i] > maxval) { maxval = c[i]; maxpos = i; }
-      }
-      let T0 = maxpos;
-
-      let x1 = c[T0 - 1], x2 = c[T0], x3 = c[T0 + 1];
-      let a = (x1 + x3 - 2 * x2) / 2;
-      let b = (x3 - x1) / 2;
-      if (a) T0 = T0 - b / (2 * a);
-
-      return sampleRate / T0;
-    }
-
-    function updateTuner() {
-      if (!isTunerActive || !micAnalyser) return;
-
-      const buf = new Float32Array(micAnalyser.fftSize);
-      micAnalyser.getFloatTimeDomainData(buf);
-
-      const pitch = autoCorrelate(buf, micAudioCtx.sampleRate);
-
-      if (pitch === -1) {
-        tunerNoteEl.innerText = "--";
-        tunerFreqEl.innerText = "소리를 내어주세요...";
-        gaugePointer.style.left = "50%";
-        gaugePointer.style.backgroundColor = "#ff4b4b";
-      } else {
-        // MIDI 음표 및 Cents 연산
-        const midiNote = 69 + 12 * Math.log2(pitch / 440);
-        const roundedMidi = Math.round(midiNote);
-        const cents = Math.round((midiNote - roundedMidi) * 100);
-
-        const noteIndex = (roundedMidi % 12 + 12) % 12;
-        const octave = Math.floor(roundedMidi / 12) - 1;
-        const noteNameWithOctave = `${noteNames[noteIndex]}${octave}`;
-
-        tunerNoteEl.innerText = noteNameWithOctave;
-        tunerFreqEl.innerText = `${pitch.toFixed(1)} Hz`;
-
-        // Cents 게이지 바늘 이동 (-50% ~ +50% -> 0% ~ 100%)
-        const clampedCents = Math.max(-50, Math.min(50, cents));
-        const pointerPos = 50 + (clampedCents / 50) * 45;
-        gaugePointer.style.left = `${pointerPos}%`;
-
-        // ±5 Cents 이내면 퍼펙트 튜닝 (밝은 녹색)
-        if (Math.abs(cents) <= 5) {
-          gaugePointer.style.backgroundColor = "#00ff88";
-          tunerCentsText.style.color = "#00ff88";
-          tunerCentsText.innerText = "★ PERFECT IN TUNE! ★";
-        } else {
-          gaugePointer.style.backgroundColor = "#ff4b4b";
-          tunerCentsText.style.color = "#888";
-          tunerCentsText.innerText = cents > 0 ? `+${cents} Cents (높음)` : `${cents} Cents (낮음)`;
-        }
-
-        // 기준 가이드 버튼 하이라이트
-        document.querySelectorAll('.string-btn').forEach(b => b.classList.remove('active'));
-        const matchedBtn = document.getElementById(`string-${noteNameWithOctave}`);
-        if (matchedBtn) matchedBtn.classList.add('active');
-      }
-
-      requestAnimationFrame(updateTuner);
-    }
+    document.getElementById('btn-reset-pitch').addEventListener('click', () => {
+      sliderPitch.value = 0;
+      applyParams();
+    });
 
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+      });
     }
   </script>
 </body>
