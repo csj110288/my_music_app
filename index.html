@@ -128,7 +128,7 @@
         <span class="val" id="video-zoom-val">1.0x (기본 크기)</span>
       </div>
       <input type="range" id="slider-video-zoom" min="1.0" max="2.5" step="0.1" value="1.0">
-      <div style="font-size: 0.75rem; color: #aaa; margin-top: 4px; text-align: left;">* 화면을 확대 후 마우스/손가락으로 마구 끌어서 원하는 연주 지점을 맞춰보세요.</div>
+      <div style="font-size: 0.75rem; color: #aaa; margin-top: 4px; text-align: left;">* 화면을 확대 후 마우스/손가락으로 끌어서 원하는 연주 지점을 맞춰보세요.</div>
     </div>
 
     <!-- 파형 콘솔 + 파형 Zoom 슬라이더 세트 -->
@@ -235,7 +235,42 @@
     const btnPlay = document.getElementById('btn-play');
     const statusText = document.getElementById('status-text');
 
-    // [중요] 오디오 파이프라인 단 1회 고정 연결 (A value with the given key 오류 완전 예방)
+    // 실제 음원 데이터 PCM 피크 100% 추출 엔진
+    async function extractRealPeaks(file) {
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+        ctx.close();
+
+        const channelData = audioBuffer.getChannelData(0); // 좌측 채널 진폭 데이터
+        const sampleCount = 600; // 파형 세밀도
+        const blockSize = Math.floor(channelData.length / sampleCount);
+        const peaks = [];
+        let maxPeak = 0;
+
+        for (let i = 0; i < sampleCount; i++) {
+          let start = i * blockSize;
+          let peak = 0;
+          for (let j = 0; j < blockSize; j += 8) {
+            const val = Math.abs(channelData[start + j] || 0);
+            if (val > peak) peak = val;
+          }
+          peaks.push(peak);
+          if (peak > maxPeak) maxPeak = peak;
+        }
+
+        // 실제 음량 진폭 정규화 (Dynamic Range Normalization)
+        if (maxPeak > 0) {
+          return peaks.map(p => p / maxPeak);
+        }
+        return peaks;
+      } catch (e) {
+        console.warn("실제 파형 추출 오류 (기본 렌더러 전환):", e);
+        return null;
+      }
+    }
+
     async function ensureAudioPipeline() {
       if (Tone.context.state !== 'running') {
         await Tone.start();
@@ -258,13 +293,13 @@
       statusText.innerText = `구간 반복 설정 (${region.start.toFixed(2)}s ~ ${region.end.toFixed(2)}s)`;
     });
 
-    // 파일 로딩
+    // 파일 로딩 및 실제 파형 적용
     document.getElementById('audio-file').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
       statusText.style.color = '#00f2fe';
-      statusText.innerText = `미디어 로딩 중: ${file.name}...`;
+      statusText.innerText = `실제 파형 정밀 분석 중: ${file.name}...`;
       isReady = false;
 
       mediaEl.pause();
@@ -278,23 +313,21 @@
 
       const fileUrl = URL.createObjectURL(file);
 
-      // 파형 안전 생성 (MP3는 디코딩, WebM 녹화본은 가상 파형 안전 매핑)
-      file.arrayBuffer().then(buf => {
-        return Tone.context.decodeAudioData(buf);
-      }).then(audioBuf => {
-        wavesurfer.loadAudioBuffer(audioBuf);
-      }).catch(() => {
-        const dummyPeaks = Array.from({ length: 300 }, (_, i) => Math.sin(i * 0.08) * 0.3 + 0.5);
-        const duration = mediaEl.duration || 30;
-        wavesurfer.load('', [dummyPeaks], duration);
-      });
+      // 실제 PCM 파형 정밀 생성
+      const realPeaks = await extractRealPeaks(file);
+
+      if (realPeaks && realPeaks.length > 0) {
+        wavesurfer.load(fileUrl, [realPeaks]);
+      } else {
+        wavesurfer.load(fileUrl);
+      }
 
       mediaEl.onloadedmetadata = () => {
         isReady = true;
         statusText.style.color = '#00ff88';
         statusText.innerText = isVideo 
-          ? '★ 동영상 로드 완료! [▶ 재생] 버튼을 누르거나 파형을 드래그해보세요.' 
-          : '★ 음원 로드 완료! [▶ 재생] 버튼을 누르거나 파형을 드래그해보세요.';
+          ? '★ 실제 파형 생성 완료! [▶ 재생]을 누르거나 파형을 드래그해 정밀 구간을 선택하세요.' 
+          : '★ 실제 파형 생성 완료! [▶ 재생]을 누르거나 파형을 드래그해 정밀 구간을 선택하세요.';
       };
 
       mediaEl.src = fileUrl;
@@ -311,7 +344,6 @@
       btnPlay.innerText = "▶ 재생";
     });
 
-    // 재생 / 일시정지
     async function togglePlay() {
       if (!isReady) return alert('파일을 먼저 선택해 주세요.');
 
@@ -340,7 +372,6 @@
       statusText.innerText = '구간 반복이 해제되었습니다.';
     });
 
-    // MP3 및 미디어 원음 HQ 음질 보장 파이프라인
     function applyParams() {
       const speed = parseFloat(sliderSpeed.value);
       const targetSemitones = parseInt(sliderPitch.value);
@@ -355,12 +386,10 @@
         mediaSourceNode.disconnect();
 
         if (Math.abs(finalShift) < 0.01) {
-          // HQ 원음 직결
           mediaEl.preservesPitch = true;
           const rawCtx = Tone.getContext().rawContext || Tone.context;
           mediaSourceNode.connect(rawCtx.destination);
         } else {
-          // 키 변경 시 PitchShift 노드 가동
           mediaEl.preservesPitch = false;
           Tone.connect(mediaSourceNode, pitchShiftNode);
           pitchShiftNode.pitch = finalShift;
@@ -376,7 +405,6 @@
       targetKeyText.innerText = `${noteNames[targetIdx]} (${semitoneStr})`;
     }
 
-    // 영상 화면 확대 및 드래그 이동 (Video Zoom & Pan)
     let videoScale = 1.0;
     let panX = 0, panY = 0;
     let isDragging = false, startX = 0, startY = 0;
