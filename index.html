@@ -23,6 +23,45 @@
     
     .controls-main { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 16px; }
     
+    /* 데스크톱/모바일 반응형 비디오 모니터 박스 */
+    .video-preview-box {
+      display: none;
+      width: 100%;
+      height: 400px;
+      margin: 0 auto 12px auto;
+      background: #000;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid #333;
+      position: relative;
+      cursor: grab;
+    }
+    .video-preview-box:active { cursor: grabbing; }
+    
+    .video-preview-box video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      transform-origin: center center;
+      transition: transform 0.05s ease-out;
+    }
+
+    @media (max-width: 600px) {
+      .video-preview-box { height: 230px; }
+      body { padding: 8px; }
+      .container { padding: 12px; }
+    }
+
+    /* 파형 콘솔 및 전용 Zoom 컨트롤 박스 */
+    .waveform-section {
+      background: #252528;
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 16px;
+      border: 1px solid #333;
+    }
+    #waveform { background: #1a1a1a; border-radius: 8px; min-height: 80px; overflow: hidden; position: relative; }
+
     .slider-panel {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -63,18 +102,13 @@
     button.secondary { background: #333; color: #fff; border: 1px solid #555; }
     button.record-btn { background: linear-gradient(to right, #ff007f, #7f00ff); color: #fff; }
     button:hover { opacity: 0.9; transform: translateY(-1px); }
-    
-    #waveform { background: #2a2a2a; border-radius: 8px; margin: 12px 0; min-height: 80px; overflow: hidden; position: relative; }
-    .status { font-size: 0.9rem; color: #00f2fe; margin-top: 8px; font-weight: bold; word-break: break-all; }
+    .status { font-size: 0.88rem; color: #00f2fe; margin-top: 6px; font-weight: bold; word-break: break-all; }
   </style>
 </head>
 <body>
 
   <div class="container">
     <h1>🎸 Musician Copy & Studio App</h1>
-
-    <!-- 통합 미디어 엔진 -->
-    <video id="media-engine" style="display:none;"></video>
 
     <div class="controls-main">
       <input type="file" id="audio-file" accept="audio/*,video/*">
@@ -83,6 +117,35 @@
       <button id="btn-record" class="record-btn">🎥 영상 녹화 시작</button>
     </div>
 
+    <!-- 영상 모니터 및 영상 줌 슬라이더 -->
+    <div class="video-preview-box" id="video-container">
+      <video id="media-engine"></video>
+    </div>
+
+    <div id="video-zoom-panel" style="display:none; margin-bottom: 12px; background: #282828; padding: 10px 16px; border-radius: 8px;">
+      <div class="slider-header">
+        <span>Video Zoom (영상 화면 확대/위치 이동)</span>
+        <span class="val" id="video-zoom-val">1.0x (기본 크기)</span>
+      </div>
+      <input type="range" id="slider-video-zoom" min="1.0" max="2.5" step="0.1" value="1.0">
+      <div style="font-size: 0.75rem; color: #aaa; margin-top: 4px; text-align: left;">* 화면을 확대 후 마우스/손가락으로 마구 끌어서 원하는 연주 지점을 맞춰보세요.</div>
+    </div>
+
+    <!-- 파형 콘솔 + 파형 Zoom 슬라이더 세트 -->
+    <div class="waveform-section">
+      <div id="waveform"></div>
+      
+      <div class="slider-group" style="margin-top: 10px;">
+        <div class="slider-header">
+          <span>Waveform Zoom (파형 정밀 확대)</span>
+          <span class="val" id="zoom-val">기본 크기</span>
+        </div>
+        <input type="range" id="slider-zoom" min="0" max="150" step="5" value="0">
+      </div>
+      <div class="status" id="status-text">음원 또는 영상 파일(MP3, MP4, WebM 등)을 선택하세요.</div>
+    </div>
+
+    <!-- 속도/키 컨트롤 패널 -->
     <div class="slider-panel">
       <!-- 속도 조절 -->
       <div class="slider-group">
@@ -128,24 +191,14 @@
 
         <button id="btn-reset-pitch" class="secondary" style="margin-top: 6px; font-size: 0.75rem; padding: 3px 6px; align-self: flex-end;">키 Reset</button>
       </div>
-
-      <!-- 파형 정밀 확대 슬라이더 -->
-      <div class="slider-group" style="grid-column: 1 / -1;">
-        <div class="slider-header">
-          <span>Waveform Zoom (파형 정밀 확대)</span>
-          <span class="val" id="zoom-val">기본 크기</span>
-        </div>
-        <input type="range" id="slider-zoom" min="0" max="150" step="5" value="0">
-      </div>
     </div>
-
-    <div id="waveform"></div>
-    <div class="status" id="status-text">음원 또는 영상 파일(MP3, MP4, WebM 등)을 선택하세요.</div>
   </div>
 
   <script>
     const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
     const mediaEl = document.getElementById('media-engine');
+    const videoContainer = document.getElementById('video-container');
+    const videoZoomPanel = document.getElementById('video-zoom-panel');
 
     const wsRegions = WaveSurfer.Regions.create();
     const wavesurfer = WaveSurfer.create({
@@ -163,7 +216,6 @@
 
     wsRegions.enableDragSelection({ color: 'rgba(0, 242, 254, 0.3)' });
 
-    let nativeAudioCtx = null;
     let mediaSourceNode = null;
     let pitchShiftNode = null;
     let isReady = false;
@@ -175,28 +227,25 @@
     const pitchVal = document.getElementById('pitch-val');
     const sliderZoom = document.getElementById('slider-zoom');
     const zoomVal = document.getElementById('zoom-val');
+    const sliderVideoZoom = document.getElementById('slider-video-zoom');
+    const videoZoomVal = document.getElementById('video-zoom-val');
     const selectOrigKey = document.getElementById('select-orig-key');
     const targetKeyText = document.getElementById('target-key-text');
     const btnPlay = document.getElementById('btn-play');
     const statusText = document.getElementById('status-text');
 
-    // 브라우저 순수 오디오 엔진 안정화 생성 (1회 고정)
     async function ensureAudioPipeline() {
-      if (!nativeAudioCtx) {
-        nativeAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        Tone.setContext(nativeAudioCtx);
-
-        pitchShiftNode = new Tone.PitchShift(0).toDestination();
-        mediaSourceNode = nativeAudioCtx.createMediaElementSource(mediaEl);
-        mediaSourceNode.connect(pitchShiftNode.input);
+      if (Tone.context.state !== 'running') {
+        await Tone.start();
       }
 
-      if (nativeAudioCtx.state === 'suspended') {
-        await nativeAudioCtx.resume();
+      if (!mediaSourceNode) {
+        pitchShiftNode = new Tone.PitchShift(0);
+        mediaSourceNode = Tone.getContext().createMediaElementSource(mediaEl);
+        applyParams(); // 파이프라인 생성 즉시 스피커 노드 연결
       }
     }
 
-    // A-B 구간 반복 설정
     wsRegions.on('region-created', (region) => {
       wsRegions.getRegions().forEach((r) => { if (r !== region) r.remove(); });
       activeRegion = region;
@@ -206,51 +255,56 @@
       statusText.innerText = `구간 반복 설정 (${region.start.toFixed(2)}s ~ ${region.end.toFixed(2)}s)`;
     });
 
-    wsRegions.on('region-updated', (region) => {
-      activeRegion = region;
-      statusText.innerText = `구간 변경됨 (${region.start.toFixed(2)}s ~ ${region.end.toFixed(2)}s)`;
-    });
-
-    // 파일 로딩
-    document.getElementById('audio-file').addEventListener('change', async (e) => {
+    // 파일 로딩 (HTML5 표준 이벤트 기반 안전 연결)
+    document.getElementById('audio-file').addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
       statusText.style.color = '#00f2fe';
-      statusText.innerText = `미디어 불러오는 중: ${file.name}...`;
+      statusText.innerText = `미디어 로딩 중: ${file.name}...`;
       isReady = false;
 
       mediaEl.pause();
+      btnPlay.innerText = "재생 / 일시정지"; // 파일 선택 시 버튼 상태 확실하게 초기화
       wsRegions.clearRegions();
       activeRegion = null;
 
+      const isVideo = file.type.startsWith('video/') || file.name.endsWith('.webm') || file.name.endsWith('.mp4');
+      videoContainer.style.display = isVideo ? 'block' : 'none';
+      videoZoomPanel.style.display = isVideo ? 'block' : 'none';
+
       const fileUrl = URL.createObjectURL(file);
 
-      try {
-        await wavesurfer.load(fileUrl);
-      } catch (err) {
-        console.log("파형 렌더링 동기화");
-      }
+      mediaEl.onloadedmetadata = () => {
+        isReady = true;
+        applyParams();
+        statusText.style.color = '#00ff88';
+        statusText.innerText = isVideo 
+          ? '★ 동영상 로드 완료! [재생 / 일시정지] 버튼을 누르거나 파형을 드래그해보세요.' 
+          : '★ 음원 로드 완료! [재생 / 일시정지] 버튼을 누르거나 파형을 드래그해보세요.';
+      };
 
-      isReady = true;
-      applyParams();
-      statusText.style.color = '#00ff88';
-      statusText.innerText = '★ 준비 완료! [재생 / 일시정지] 버튼을 누르거나 파형을 드래그해보세요.';
+      mediaEl.onerror = () => {
+        statusText.style.color = '#ff4b4b';
+        statusText.innerText = '미디어 파일 읽기 오류가 발생했습니다.';
+      };
+
+      mediaEl.src = fileUrl;
+      mediaEl.load();
     });
 
-    // 재생 위치 추적 및 루프
     mediaEl.addEventListener('timeupdate', () => {
       if (activeRegion && mediaEl.currentTime >= activeRegion.end) {
         mediaEl.currentTime = activeRegion.start;
       }
     });
 
-    // 재생 / 일시정지 (안전한 엔진 가동)
     async function togglePlay() {
       if (!isReady) return alert('파일을 먼저 선택해 주세요.');
 
       try {
         await ensureAudioPipeline();
+        applyParams(); // 재생 클릭 시 파이프라인 재확인 및 소리 직결
 
         if (mediaEl.paused) {
           await mediaEl.play();
@@ -273,18 +327,28 @@
       statusText.innerText = '구간 반복이 해제되었습니다.';
     });
 
-    // 속도 및 키 조절
+    // MP3 및 미디어 원음 HQ 음질 보장 파이프라인
     function applyParams() {
       const speed = parseFloat(sliderSpeed.value);
       const targetSemitones = parseInt(sliderPitch.value);
       const origKeyIdx = parseInt(selectOrigKey.value);
 
-      if (mediaEl && pitchShiftNode) {
+      if (mediaEl && mediaSourceNode) {
         mediaEl.playbackRate = speed;
-        mediaEl.preservesPitch = false;
 
-        const speedPitchOffset = 12 * Math.log2(speed);
-        pitchShiftNode.pitch = targetSemitones - speedPitchOffset;
+        if (targetSemitones === 0) {
+          mediaEl.preservesPitch = true;
+          Tone.disconnect(mediaSourceNode);
+          mediaSourceNode.connect(Tone.getContext().destination);
+        } else {
+          mediaEl.preservesPitch = false;
+          Tone.disconnect(mediaSourceNode);
+          Tone.connect(mediaSourceNode, pitchShiftNode);
+          pitchShiftNode.toDestination();
+
+          const speedPitchOffset = 12 * Math.log2(speed);
+          pitchShiftNode.pitch = targetSemitones - speedPitchOffset;
+        }
       }
 
       speedVal.innerText = `${speed.toFixed(2)}x (${Math.round(speed * 100)}%)`;
@@ -295,6 +359,58 @@
       if (targetIdx < 0) targetIdx += 12;
       targetKeyText.innerText = `${noteNames[targetIdx]} (${semitoneStr})`;
     }
+
+    // 영상 화면 확대 및 드래그 이동 (Video Zoom & Pan)
+    let videoScale = 1.0;
+    let panX = 0, panY = 0;
+    let isDragging = false, startX = 0, startY = 0;
+
+    function updateVideoTransform() {
+      mediaEl.style.transform = `scale(${videoScale}) translate(${panX}px, ${panY}px)`;
+    }
+
+    sliderVideoZoom.addEventListener('input', (e) => {
+      videoScale = parseFloat(e.target.value);
+      if (videoScale === 1.0) { panX = 0; panY = 0; }
+      videoZoomVal.innerText = `${videoScale.toFixed(1)}x`;
+      updateVideoTransform();
+    });
+
+    videoContainer.addEventListener('mousedown', (e) => {
+      if (videoScale > 1.0) {
+        isDragging = true;
+        startX = e.clientX - panX;
+        startY = e.clientY - panY;
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        panX = e.clientX - startX;
+        panY = e.clientY - startY;
+        updateVideoTransform();
+      }
+    });
+
+    window.addEventListener('mouseup', () => { isDragging = false; });
+
+    videoContainer.addEventListener('touchstart', (e) => {
+      if (videoScale > 1.0 && e.touches.length === 1) {
+        isDragging = true;
+        startX = e.touches[0].clientX - panX;
+        startY = e.touches[0].clientY - panY;
+      }
+    });
+
+    window.addEventListener('touchmove', (e) => {
+      if (isDragging && e.touches.length === 1) {
+        panX = e.touches[0].clientX - startX;
+        panY = e.touches[0].clientY - startY;
+        updateVideoTransform();
+      }
+    });
+
+    window.addEventListener('touchend', () => { isDragging = false; });
 
     sliderZoom.addEventListener('input', (e) => {
       const zoomPx = parseInt(e.target.value);
@@ -336,6 +452,10 @@
           video: { displaySurface: "window" },
           audio: true
         });
+
+        if (recordStream.getAudioTracks().length === 0) {
+          alert("⚠️ [주의] 오디오(소리) 공유가 켜지지 않았습니다!\n소리까지 함께 녹화하려면 화면 선택 팝업 하단의 '오디오 공유' 체크박스를 꼭 확인해 주세요.");
+        }
 
         recordedChunks = [];
         const options = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') 
