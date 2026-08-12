@@ -68,7 +68,6 @@
     #waveform { background: #2a2a2a; border-radius: 8px; margin: 12px 0; min-height: 80px; overflow: hidden; }
     .status { font-size: 0.9rem; color: #00f2fe; margin-top: 8px; font-weight: bold; word-break: break-all; }
 
-    /* 튜너 패널 스타일 */
     .tuner-card {
       background: #25252d; border: 2px solid #4facfe; border-radius: 14px; padding: 16px; margin-bottom: 16px; display: none;
     }
@@ -88,6 +87,9 @@
 
   <div class="container">
     <h1>🎸 Musician Copy & Studio App</h1>
+
+    <!-- 범용 미디어 재생 엘리먼트 (숨김 처리) -->
+    <audio id="media-engine" crossorigin="anonymous" style="display:none;"></audio>
 
     <div class="controls-main">
       <input type="file" id="audio-file" accept="audio/*,video/*">
@@ -183,10 +185,12 @@
 
   <script>
     const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    const mediaEl = document.getElementById('media-engine');
 
     const wsRegions = WaveSurfer.Regions.create();
     const wavesurfer = WaveSurfer.create({
       container: '#waveform',
+      media: mediaEl, // HTML5 Media Element 연동으로 모든 오디오/비디오 포맷 완벽 대응
       waveColor: '#4f5b66',
       progressColor: '#00f2fe',
       cursorColor: '#ff4b4b',
@@ -198,18 +202,11 @@
     });
 
     wsRegions.enableDragSelection({ color: 'rgba(0, 242, 254, 0.3)' });
-    wavesurfer.setVolume(0);
 
-    let player = null;
     let pitchShiftNode = null;
+    let mediaSourceNode = null;
     let isReady = false;
-    let isPlaying = false;
     let activeRegion = null;
-    let startTime = 0;
-    let startOffset = 0;
-    let currentAudioTime = 0;
-    let audioDuration = 0;
-    let animFrameId = null;
 
     const sliderSpeed = document.getElementById('slider-speed');
     const speedVal = document.getElementById('speed-val');
@@ -225,127 +222,72 @@
     wsRegions.on('region-created', (region) => {
       wsRegions.getRegions().forEach((r) => { if (r !== region) r.remove(); });
       activeRegion = region;
-      seekTo(region.start);
-      if (!isPlaying) startAudio();
+      mediaEl.currentTime = region.start;
+      if (mediaEl.paused) togglePlay();
       statusText.style.color = '#00f2fe';
       statusText.innerText = `구간 반복 설정 (${region.start.toFixed(2)}s ~ ${region.end.toFixed(2)}s)`;
     });
 
-    // 범용 디코더 (오디오/비디오 예외 안전 처리)
-    // 범용 디코더 (Detached ArrayBuffer 오류 완벽 해결)
-async function decodeAudioFromAnyFile(file) {
-  try {
-    // 1차 시도: 신규 ArrayBuffer 생성 후 전달
-    const buffer1 = await file.arrayBuffer();
-    return await Tone.context.decodeAudioData(buffer1);
-  } catch (firstErr) {
-    console.warn("1차 디코딩 실패, 2차 독립 디코더 재시도:", firstErr);
-    
-    // 2차 시도: 파일에서 완전히 새로운 ArrayBuffer를 다시 읽어와 재시도 (Detached 방지)
-    const buffer2 = await file.arrayBuffer();
-    const offlineCtx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(2, 44100 * 10, 44100);
-    return await offlineCtx.decodeAudioData(buffer2);
-  }
-}
-
+    // 파일 변경 시 실행
     document.getElementById('audio-file').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
       statusText.style.color = '#00f2fe';
-      statusText.innerText = `파일 분석 중: ${file.name}...`;
+      statusText.innerText = `미디어 로딩 중: ${file.name}...`;
       isReady = false;
 
       try {
         await Tone.start();
-        if (player) { player.stop(); player.dispose(); player = null; }
 
-        // 범용 디코딩 수행
-        const audioBuffer = await decodeAudioFromAnyFile(file);
+        const fileUrl = URL.createObjectURL(file);
+        mediaEl.src = fileUrl;
 
-        // WaveSurfer 안전 로딩 예외 보장
-        if (wavesurfer) {
-          try {
-            await wavesurfer.loadAudioBuffer(audioBuffer);
-          } catch (wsErr) {
-            const url = URL.createObjectURL(file);
-            wavesurfer.load(url).catch(() => {});
-          }
+        // Web Audio 노드 최초 1회 연결
+        if (!pitchShiftNode) {
+          pitchShiftNode = new Tone.PitchShift(0).toDestination();
+          mediaSourceNode = Tone.context.createMediaElementSource(mediaEl);
+          Tone.connect(mediaSourceNode, pitchShiftNode);
         }
 
-        if (pitchShiftNode) pitchShiftNode.dispose();
-        pitchShiftNode = new Tone.PitchShift(0).toDestination();
-
-        player = new Tone.Player(audioBuffer);
-        player.connect(pitchShiftNode);
-
-        audioDuration = audioBuffer.duration;
-        startOffset = 0;
-        currentAudioTime = 0;
-        isReady = true;
-
-        applyParams();
-        statusText.style.color = '#00ff88';
-        statusText.innerText = '★ 준비 완료! 파형을 마우스로 드래그하여 반복 구간을 정해보세요.';
+        mediaEl.onloadedmetadata = () => {
+          isReady = true;
+          applyParams();
+          statusText.style.color = '#00ff88';
+          statusText.innerText = '★ 준비 완료! 파형을 마우스로 드래그하여 반복 구간을 정해보세요.';
+        };
       } catch (err) {
         console.error(err);
         statusText.style.color = '#ff4b4b';
-        statusText.innerText = `파일 로딩 에러: ${err.message || '지원되지 않는 형식입니다.'}`;
+        statusText.innerText = `파일 로딩 에러: ${err.message}`;
+      }
+    });
+
+    // A-B 구간 실시간 반복 제어
+    mediaEl.addEventListener('timeupdate', () => {
+      if (activeRegion && mediaEl.currentTime >= activeRegion.end) {
+        mediaEl.currentTime = activeRegion.start;
       }
     });
 
     async function togglePlay() {
-      if (!isReady || !player) return alert('음원 로딩이 완료될 때까지 기다려주세요.');
+      if (!isReady) return alert('미디어 파일 로딩이 완료될 때까지 기다려주세요.');
       if (Tone.context.state !== 'running') await Tone.start();
-      if (isPlaying) stopAudio(); else startAudio();
-    }
 
-    function startAudio() {
-      if (!player) return;
-      startTime = Tone.now();
-      player.start(Tone.now(), startOffset);
-      isPlaying = true;
-      btnPlay.innerText = "일시정지";
-      syncPlayhead();
-    }
-
-    function stopAudio() {
-      if (!player) return;
-      player.stop();
-      isPlaying = false;
-      btnPlay.innerText = "재생 / 일시정지";
-      if (animFrameId) cancelAnimationFrame(animFrameId);
-    }
-
-    function seekTo(targetTime) {
-      if (!player || !isReady) return;
-      currentAudioTime = Math.max(0, Math.min(targetTime, audioDuration));
-      startOffset = currentAudioTime;
-      startTime = Tone.now();
-      if (isPlaying) { player.stop(); player.start(Tone.now(), startOffset); }
-      else { wavesurfer.setTime(startOffset); }
-    }
-
-    btnPlay.addEventListener('click', togglePlay);
-    wavesurfer.on('interaction', (newTime) => seekTo(newTime));
-
-    function syncPlayhead() {
-      if (player && isPlaying) {
-        const wallElapsed = Tone.now() - startTime;
-        currentAudioTime = startOffset + (wallElapsed * parseFloat(sliderSpeed.value));
-        wavesurfer.setTime(currentAudioTime);
-
-        if (activeRegion && (currentAudioTime >= activeRegion.end || currentAudioTime >= audioDuration)) {
-          seekTo(activeRegion.start);
-        } else if (currentAudioTime >= audioDuration) {
-          stopAudio(); startOffset = 0; return;
-        }
-        animFrameId = requestAnimationFrame(syncPlayhead);
+      if (mediaEl.paused) {
+        mediaEl.play();
+        btnPlay.innerText = "일시정지";
+      } else {
+        mediaEl.pause();
+        btnPlay.innerText = "재생 / 일시정지";
       }
     }
 
+    btnPlay.addEventListener('click', togglePlay);
+
     document.getElementById('btn-clear-loop').addEventListener('click', () => {
-      wsRegions.clearRegions(); activeRegion = null;
+      wsRegions.clearRegions();
+      activeRegion = null;
       statusText.innerText = '구간 반복이 해제되었습니다.';
     });
 
@@ -354,9 +296,14 @@ async function decodeAudioFromAnyFile(file) {
       const targetSemitones = parseInt(sliderPitch.value);
       const origKeyIdx = parseInt(selectOrigKey.value);
 
-      if (player && pitchShiftNode) {
-        player.playbackRate = speed;
-        pitchShiftNode.pitch = targetSemitones - (12 * Math.log2(speed));
+      if (mediaEl && pitchShiftNode) {
+        // HTML5 Media 속도 조절
+        mediaEl.playbackRate = speed;
+        mediaEl.preservesPitch = false; // Tone.js가 피치를 담당하도록 설정
+
+        // Tone.js 피치 조절 (속도 변화분 자동 보정)
+        const speedPitchOffset = 12 * Math.log2(speed);
+        pitchShiftNode.pitch = targetSemitones - speedPitchOffset;
       }
 
       speedVal.innerText = `${speed.toFixed(2)}x (${Math.round(speed * 100)}%)`;
@@ -378,8 +325,18 @@ async function decodeAudioFromAnyFile(file) {
     sliderPitch.addEventListener('input', applyParams);
     selectOrigKey.addEventListener('change', applyParams);
 
+    document.getElementById('btn-reset-speed').addEventListener('click', () => {
+      sliderSpeed.value = 1.0;
+      applyParams();
+    });
+
+    document.getElementById('btn-reset-pitch').addEventListener('click', () => {
+      sliderPitch.value = 0;
+      applyParams();
+    });
+
     // ==========================================
-    // 실시간 악기 튜너 (Autocorrelation)
+    // 실시간 악기 튜너
     // ==========================================
     let micAudioCtx = null, micAnalyser = null, micStream = null, isTunerActive = false;
     const tunerCard = document.getElementById('tuner-card');
