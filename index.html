@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Musician Copy & Studio App</title>
+  
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#4facfe">
+
+  <!-- Wavesurfer.js & Regions Plugin -->
+  <script src="https://unpkg.com/wavesurfer.js@7"></script>
+  <script src="https://unpkg.com/wavesurfer.js@7/dist/plugins/regions.min.js"></script>
+
+  <!-- Tone.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: #121212; color: #ffffff; margin: 0; padding: 16px; text-align: center; }
+    .container { max-width: 850px; margin: 0 auto; background: #1e1e1e; padding: 20px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+    h1 { font-size: 1.5rem; color: #4facfe; margin-bottom: 16px; }
+    
+    .controls-main { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 16px; }
+    
+    .slider-panel {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+      background: #282828;
+      padding: 16px;
+      border-radius: 12px;
+      margin-bottom: 16px;
+    }
+    .slider-group { display: flex; flex-direction: column; align-items: stretch; text-align: left; }
+    .slider-header { display: flex; justify-content: space-between; font-weight: bold; font-size: 0.9rem; margin-bottom: 6px; color: #4facfe; }
+    .slider-header span.val { color: #00f2fe; }
+    
+    .key-display-box {
+      background: #121212;
+      border: 1px solid #4facfe;
+      border-radius: 8px;
+      padding: 8px;
+      margin-top: 6px;
+      text-align: center;
+    }
+    .key-title { font-size: 0.75rem; color: #aaa; margin-bottom: 2px; }
+    .key-result { font-size: 1.1rem; font-weight: bold; color: #00f2fe; }
+
+    select {
+      background: #333; color: #fff; border: 1px solid #555; padding: 4px 8px; border-radius: 6px; font-weight: bold;
+    }
+
+    input[type="range"] {
+      width: 100%; height: 6px; border-radius: 3px; background: #444; outline: none; accent-color: #00f2fe; cursor: pointer;
+    }
+
+    button, input[type="file"]::file-selector-button {
+      background: linear-gradient(to right, #4facfe, #00f2fe);
+      border: none; color: #000; font-weight: bold; padding: 8px 14px;
+      border-radius: 8px; cursor: pointer; transition: 0.2s; font-size: 0.9rem;
+    }
+    button.secondary { background: #333; color: #fff; border: 1px solid #555; }
+    button.tuner-btn { background: linear-gradient(to right, #ff0844, #ffb199); color: #fff; }
+    button.record-btn { background: linear-gradient(to right, #ff007f, #7f00ff); color: #fff; }
+    button:hover { opacity: 0.9; transform: translateY(-1px); }
+    
+    #waveform { background: #2a2a2a; border-radius: 8px; margin: 12px 0; min-height: 80px; overflow: hidden; }
+    .status { font-size: 0.9rem; color: #00f2fe; margin-top: 8px; font-weight: bold; word-break: break-all; }
+
+    /* 튜너 패널 스타일 */
+    .tuner-card {
+      background: #25252d; border: 2px solid #4facfe; border-radius: 14px; padding: 16px; margin-bottom: 16px; display: none;
+    }
+    .tuner-card.active { display: block; }
+    .tuner-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .tuner-note-display { font-size: 3.2rem; font-weight: 900; color: #ffffff; line-height: 1; }
+    .tuner-freq { font-size: 1rem; color: #aaa; margin-top: 4px; }
+    .gauge-bar-container { width: 100%; height: 16px; background: #111; border-radius: 8px; position: relative; margin: 16px 0; overflow: hidden; }
+    .gauge-center-line { position: absolute; left: 50%; top: 0; bottom: 0; width: 4px; background: #00f2fe; transform: translateX(-50%); z-index: 2; }
+    .gauge-pointer { position: absolute; top: 0; bottom: 0; width: 8px; background: #ff4b4b; border-radius: 4px; left: 50%; transform: translateX(-50%); transition: left 0.1s ease-out; z-index: 3; }
+    .string-buttons { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
+    .string-btn { background: #333; color: #ccc; border: 1px solid #555; padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; }
+    .string-btn.active { background: #00f2fe; color: #000; font-weight: bold; border-color: #00f2fe; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h1>🎸 Musician Copy & Studio App</h1>
+
+    <div class="controls-main">
+      <input type="file" id="audio-file" accept="audio/*,video/*">
+      <button id="btn-play">재생 / 일시정지</button>
+      <button id="btn-clear-loop" class="secondary">구간 해제</button>
+      <button id="btn-toggle-tuner" class="tuner-btn">🎙️ 튜너 토글</button>
+      <button id="btn-record" class="record-btn">🎥 영상 녹화 시작</button>
+    </div>
+
+    <!-- 튜너 모듈 -->
+    <div class="tuner-card" id="tuner-card">
+      <div class="tuner-header">
+        <span style="font-weight: bold; color: #ffb199;">실시간 악기 튜너</span>
+        <div>
+          <label style="font-size: 0.85rem; color: #ccc;">악기 선택: </label>
+          <select id="tuner-preset">
+            <option value="chromatic">크로매틱 (모든 음)</option>
+            <option value="guitar">6현 기타 (E2 A2 D3 G3 B3 E4)</option>
+            <option value="bass4">4현 베이스 (E1 A1 D2 G2)</option>
+            <option value="bass5" selected>5현 베이스 (B0 E1 A1 D2 G2)</option>
+          </select>
+        </div>
+      </div>
+      <div class="tuner-note-display" id="tuner-note">--</div>
+      <div class="tuner-freq" id="tuner-freq">0.0 Hz</div>
+      <div class="gauge-bar-container">
+        <div class="gauge-center-line"></div>
+        <div class="gauge-pointer" id="gauge-pointer"></div>
+      </div>
+      <div style="font-size: 0.8rem; color: #888;" id="tuner-cents-text">마이크 입력을 기다리는 중...</div>
+      <div class="string-buttons" id="string-guide-box"></div>
+    </div>
+
+    <div class="slider-panel">
+      <!-- 속도 조절 -->
+      <div class="slider-group">
+        <div class="slider-header">
+          <span>Tempo (속도)</span>
+          <span class="val" id="speed-val">1.00x (100%)</span>
+        </div>
+        <input type="range" id="slider-speed" min="0.5" max="1.5" step="0.05" value="1.0">
+        <button id="btn-reset-speed" class="secondary" style="margin-top: 6px; font-size: 0.75rem; padding: 3px 6px; align-self: flex-end;">속도 Reset</button>
+      </div>
+
+      <!-- 피치 및 영문 Key 표기 -->
+      <div class="slider-group">
+        <div class="slider-header">
+          <span>Pitch (Key Shift)</span>
+          <span class="val" id="pitch-val">0 Semitones</span>
+        </div>
+        
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <label style="font-size: 0.8rem; color: #ccc;">Original Key (원곡):</label>
+          <select id="select-orig-key">
+            <option value="0">C</option>
+            <option value="1">C# / Db</option>
+            <option value="2">D</option>
+            <option value="3">D# / Eb</option>
+            <option value="4">E</option>
+            <option value="5">F</option>
+            <option value="6">F# / Gb</option>
+            <option value="7">G</option>
+            <option value="8">G# / Ab</option>
+            <option value="9" selected>A</option>
+            <option value="10">A# / Bb</option>
+            <option value="11">B</option>
+          </select>
+        </div>
+
+        <input type="range" id="slider-pitch" min="-6" max="6" step="1" value="0">
+        
+        <div class="key-display-box">
+          <div class="key-title">Target Key (조절된 키)</div>
+          <div class="key-result" id="target-key-text">A (0 Semitones)</div>
+        </div>
+
+        <button id="btn-reset-pitch" class="secondary" style="margin-top: 6px; font-size: 0.75rem; padding: 3px 6px; align-self: flex-end;">키 Reset</button>
+      </div>
+
+      <!-- 파형 정밀 확대 슬라이더 -->
+      <div class="slider-group" style="grid-column: 1 / -1;">
+        <div class="slider-header">
+          <span>Waveform Zoom (파형 정밀 확대)</span>
+          <span class="val" id="zoom-val">기본 크기</span>
+        </div>
+        <input type="range" id="slider-zoom" min="0" max="150" step="5" value="0">
+      </div>
+    </div>
+
+    <div id="waveform"></div>
+    <div class="status" id="status-text">음원 또는 영상 파일(MP3, MP4, WebM 등)을 선택하세요.</div>
+  </div>
+
+  <script>
+    const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+    const wsRegions = WaveSurfer.Regions.create();
+    const wavesurfer = WaveSurfer.create({
+      container: '#waveform',
+      waveColor: '#4f5b66',
+      progressColor: '#00f2fe',
+      cursorColor: '#ff4b4b',
+      cursorWidth: 2,
+      height: 80,
+      responsive: true,
+      interact: true,
+      plugins: [wsRegions]
+    });
+
+    wsRegions.enableDragSelection({ color: 'rgba(0, 242, 254, 0.3)' });
+    wavesurfer.setVolume(0);
+
+    let player = null;
+    let pitchShiftNode = null;
+    let isReady = false;
+    let isPlaying = false;
+    let activeRegion = null;
+    let startTime = 0;
+    let startOffset = 0;
+    let currentAudioTime = 0;
+    let audioDuration = 0;
+    let animFrameId = null;
+
+    const sliderSpeed = document.getElementById('slider-speed');
+    const speedVal = document.getElementById('speed-val');
+    const sliderPitch = document.getElementById('slider-pitch');
+    const pitchVal = document.getElementById('pitch-val');
+    const sliderZoom = document.getElementById('slider-zoom');
+    const zoomVal = document.getElementById('zoom-val');
+    const selectOrigKey = document.getElementById('select-orig-key');
+    const targetKeyText = document.getElementById('target-key-text');
+    const btnPlay = document.getElementById('btn-play');
+    const statusText = document.getElementById('status-text');
+
+    wsRegions.on('region-created', (region) => {
+      wsRegions.getRegions().forEach((r) => { if (r !== region) r.remove(); });
+      activeRegion = region;
+      seekTo(region.start);
+      if (!isPlaying) startAudio();
+      statusText.style.color = '#00f2fe';
+      statusText.innerText = `구간 반복 설정 (${region.start.toFixed(2)}s ~ ${region.end.toFixed(2)}s)`;
+    });
+
+    // 범용 디코더 (오디오/비디오 예외 안전 처리)
+    // 범용 디코더 (Detached ArrayBuffer 오류 완벽 해결)
+async function decodeAudioFromAnyFile(file) {
+  try {
+    // 1차 시도: 신규 ArrayBuffer 생성 후 전달
+    const buffer1 = await file.arrayBuffer();
+    return await Tone.context.decodeAudioData(buffer1);
+  } catch (firstErr) {
+    console.warn("1차 디코딩 실패, 2차 독립 디코더 재시도:", firstErr);
+    
+    // 2차 시도: 파일에서 완전히 새로운 ArrayBuffer를 다시 읽어와 재시도 (Detached 방지)
+    const buffer2 = await file.arrayBuffer();
+    const offlineCtx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(2, 44100 * 10, 44100);
+    return await offlineCtx.decodeAudioData(buffer2);
+  }
+}
+
+    document.getElementById('audio-file').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      statusText.style.color = '#00f2fe';
+      statusText.innerText = `파일 분석 중: ${file.name}...`;
+      isReady = false;
+
+      try {
+        await Tone.start();
+        if (player) { player.stop(); player.dispose(); player = null; }
+
+        // 범용 디코딩 수행
+        const audioBuffer = await decodeAudioFromAnyFile(file);
+
+        // WaveSurfer 안전 로딩 예외 보장
+        if (wavesurfer) {
+          try {
+            await wavesurfer.loadAudioBuffer(audioBuffer);
+          } catch (wsErr) {
+            const url = URL.createObjectURL(file);
+            wavesurfer.load(url).catch(() => {});
+          }
+        }
+
+        if (pitchShiftNode) pitchShiftNode.dispose();
+        pitchShiftNode = new Tone.PitchShift(0).toDestination();
+
+        player = new Tone.Player(audioBuffer);
+        player.connect(pitchShiftNode);
+
+        audioDuration = audioBuffer.duration;
+        startOffset = 0;
+        currentAudioTime = 0;
+        isReady = true;
+
+        applyParams();
+        statusText.style.color = '#00ff88';
+        statusText.innerText = '★ 준비 완료! 파형을 마우스로 드래그하여 반복 구간을 정해보세요.';
+      } catch (err) {
+        console.error(err);
+        statusText.style.color = '#ff4b4b';
+        statusText.innerText = `파일 로딩 에러: ${err.message || '지원되지 않는 형식입니다.'}`;
+      }
+    });
+
+    async function togglePlay() {
+      if (!isReady || !player) return alert('음원 로딩이 완료될 때까지 기다려주세요.');
+      if (Tone.context.state !== 'running') await Tone.start();
+      if (isPlaying) stopAudio(); else startAudio();
+    }
+
+    function startAudio() {
+      if (!player) return;
+      startTime = Tone.now();
+      player.start(Tone.now(), startOffset);
+      isPlaying = true;
+      btnPlay.innerText = "일시정지";
+      syncPlayhead();
+    }
+
+    function stopAudio() {
+      if (!player) return;
+      player.stop();
+      isPlaying = false;
+      btnPlay.innerText = "재생 / 일시정지";
+      if (animFrameId) cancelAnimationFrame(animFrameId);
+    }
+
+    function seekTo(targetTime) {
+      if (!player || !isReady) return;
+      currentAudioTime = Math.max(0, Math.min(targetTime, audioDuration));
+      startOffset = currentAudioTime;
+      startTime = Tone.now();
+      if (isPlaying) { player.stop(); player.start(Tone.now(), startOffset); }
+      else { wavesurfer.setTime(startOffset); }
+    }
+
+    btnPlay.addEventListener('click', togglePlay);
+    wavesurfer.on('interaction', (newTime) => seekTo(newTime));
+
+    function syncPlayhead() {
+      if (player && isPlaying) {
+        const wallElapsed = Tone.now() - startTime;
+        currentAudioTime = startOffset + (wallElapsed * parseFloat(sliderSpeed.value));
+        wavesurfer.setTime(currentAudioTime);
+
+        if (activeRegion && (currentAudioTime >= activeRegion.end || currentAudioTime >= audioDuration)) {
+          seekTo(activeRegion.start);
+        } else if (currentAudioTime >= audioDuration) {
+          stopAudio(); startOffset = 0; return;
+        }
+        animFrameId = requestAnimationFrame(syncPlayhead);
+      }
+    }
+
+    document.getElementById('btn-clear-loop').addEventListener('click', () => {
+      wsRegions.clearRegions(); activeRegion = null;
+      statusText.innerText = '구간 반복이 해제되었습니다.';
+    });
+
+    function applyParams() {
+      const speed = parseFloat(sliderSpeed.value);
+      const targetSemitones = parseInt(sliderPitch.value);
+      const origKeyIdx = parseInt(selectOrigKey.value);
+
+      if (player && pitchShiftNode) {
+        player.playbackRate = speed;
+        pitchShiftNode.pitch = targetSemitones - (12 * Math.log2(speed));
+      }
+
+      speedVal.innerText = `${speed.toFixed(2)}x (${Math.round(speed * 100)}%)`;
+      const semitoneStr = targetSemitones > 0 ? `+${targetSemitones} Semitones` : `${targetSemitones} Semitones`;
+      pitchVal.innerText = semitoneStr;
+
+      let targetIdx = (origKeyIdx + targetSemitones) % 12;
+      if (targetIdx < 0) targetIdx += 12;
+      targetKeyText.innerText = `${noteNames[targetIdx]} (${semitoneStr})`;
+    }
+
+    sliderZoom.addEventListener('input', (e) => {
+      const zoomPx = parseInt(e.target.value);
+      wavesurfer.zoom(zoomPx);
+      zoomVal.innerText = zoomPx === 0 ? '기본 크기' : `${zoomPx}px/sec (확대)`;
+    });
+
+    sliderSpeed.addEventListener('input', applyParams);
+    sliderPitch.addEventListener('input', applyParams);
+    selectOrigKey.addEventListener('change', applyParams);
+
+    // ==========================================
+    // 실시간 악기 튜너 (Autocorrelation)
+    // ==========================================
+    let micAudioCtx = null, micAnalyser = null, micStream = null, isTunerActive = false;
+    const tunerCard = document.getElementById('tuner-card');
+    const tunerNoteEl = document.getElementById('tuner-note');
+    const tunerFreqEl = document.getElementById('tuner-freq');
+    const gaugePointer = document.getElementById('gauge-pointer');
+    const tunerCentsText = document.getElementById('tuner-cents-text');
+    const tunerPresetSelect = document.getElementById('tuner-preset');
+    const stringGuideBox = document.getElementById('string-guide-box');
+
+    const presetNotes = {
+      guitar: [{ name: "E2", freq: 82.41 }, { name: "A2", freq: 110.00 }, { name: "D3", freq: 146.83 }, { name: "G3", freq: 196.00 }, { name: "B3", freq: 246.94 }, { name: "E4", freq: 329.63 }],
+      bass4: [{ name: "E1", freq: 41.20 }, { name: "A1", freq: 55.00 }, { name: "D2", freq: 73.42 }, { name: "G2", freq: 98.00 }],
+      bass5: [{ name: "B0", freq: 30.87 }, { name: "E1", freq: 41.20 }, { name: "A1", freq: 55.00 }, { name: "D2", freq: 73.42 }, { name: "G2", freq: 98.00 }]
+    };
+
+    function updateStringGuideUI() {
+      stringGuideBox.innerHTML = '';
+      const presetKey = tunerPresetSelect.value;
+      if (presetNotes[presetKey]) {
+        presetNotes[presetKey].forEach(n => {
+          const btn = document.createElement('div');
+          btn.className = 'string-btn';
+          btn.innerText = `${n.name} (${n.freq.toFixed(1)}Hz)`;
+          btn.id = `string-${n.name}`;
+          stringGuideBox.appendChild(btn);
+        });
+      }
+    }
+    tunerPresetSelect.addEventListener('change', updateStringGuideUI);
+    updateStringGuideUI();
+
+    document.getElementById('btn-toggle-tuner').addEventListener('click', async () => {
+      isTunerActive = !isTunerActive;
+      if (isTunerActive) {
+        tunerCard.classList.add('active');
+        await startTunerMic();
+      } else {
+        tunerCard.classList.remove('active');
+        stopTunerMic();
+      }
+    });
+
+    async function startTunerMic() {
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        micAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = micAudioCtx.createMediaStreamSource(micStream);
+        micAnalyser = micAudioCtx.createAnalyser();
+        micAnalyser.fftSize = 4096;
+        source.connect(micAnalyser);
+        updateTuner();
+      } catch (err) {
+        alert("마이크 접근 권한 필요: " + err.message);
+        isTunerActive = false;
+        tunerCard.classList.remove('active');
+      }
+    }
+
+    function stopTunerMic() {
+      if (micStream) micStream.getTracks().forEach(track => track.stop());
+      if (micAudioCtx) micAudioCtx.close();
+      micStream = null; micAudioCtx = null;
+    }
+
+    function autoCorrelate(buf, sampleRate) {
+      let SIZE = buf.length, rms = 0;
+      for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
+      rms = Math.sqrt(rms / SIZE);
+      if (rms < 0.01) return -1;
+
+      let r1 = 0, r2 = SIZE - 1, thres = 0.2;
+      for (let i = 0; i < SIZE / 2; i++) { if (Math.abs(buf[i]) < thres) { r1 = i; break; } }
+      for (let i = 1; i < SIZE / 2; i++) { if (Math.abs(buf[SIZE - i]) < thres) { r2 = SIZE - i; break; } }
+
+      buf = buf.slice(r1, r2); SIZE = buf.length;
+      let c = new Float32Array(SIZE);
+      for (let i = 0; i < SIZE; i++) { for (let j = 0; j < SIZE - i; j++) { c[i] = c[i] + buf[j] * buf[j + i]; } }
+
+      let d = 0; while (c[d] > c[d + 1]) d++;
+      let maxval = -1, maxpos = -1;
+      for (let i = d; i < SIZE; i++) { if (c[i] > maxval) { maxval = c[i]; maxpos = i; } }
+      let T0 = maxpos;
+      let x1 = c[T0 - 1], x2 = c[T0], x3 = c[T0 + 1];
+      let a = (x1 + x3 - 2 * x2) / 2, b = (x3 - x1) / 2;
+      if (a) T0 = T0 - b / (2 * a);
+      return sampleRate / T0;
+    }
+
+    function updateTuner() {
+      if (!isTunerActive || !micAnalyser) return;
+      const buf = new Float32Array(micAnalyser.fftSize);
+      micAnalyser.getFloatTimeDomainData(buf);
+      const pitch = autoCorrelate(buf, micAudioCtx.sampleRate);
+
+      if (pitch === -1) {
+        tunerNoteEl.innerText = "--"; tunerFreqEl.innerText = "소리를 내어주세요...";
+        gaugePointer.style.left = "50%"; gaugePointer.style.backgroundColor = "#ff4b4b";
+      } else {
+        const midiNote = 69 + 12 * Math.log2(pitch / 440);
+        const roundedMidi = Math.round(midiNote);
+        const cents = Math.round((midiNote - roundedMidi) * 100);
+        const noteIndex = (roundedMidi % 12 + 12) % 12;
+        const octave = Math.floor(roundedMidi / 12) - 1;
+        const noteNameWithOctave = `${noteNames[noteIndex]}${octave}`;
+
+        tunerNoteEl.innerText = noteNameWithOctave;
+        tunerFreqEl.innerText = `${pitch.toFixed(1)} Hz`;
+
+        const clampedCents = Math.max(-50, Math.min(50, cents));
+        gaugePointer.style.left = `${50 + (clampedCents / 50) * 45}%`;
+
+        if (Math.abs(cents) <= 5) {
+          gaugePointer.style.backgroundColor = "#00ff88";
+          tunerCentsText.style.color = "#00ff88"; tunerCentsText.innerText = "★ PERFECT IN TUNE! ★";
+        } else {
+          gaugePointer.style.backgroundColor = "#ff4b4b";
+          tunerCentsText.style.color = "#888";
+          tunerCentsText.innerText = cents > 0 ? `+${cents} Cents (높음)` : `${cents} Cents (낮음)`;
+        }
+
+        document.querySelectorAll('.string-btn').forEach(b => b.classList.remove('active'));
+        const matchedBtn = document.getElementById(`string-${noteNameWithOctave}`);
+        if (matchedBtn) matchedBtn.classList.add('active');
+      }
+      requestAnimationFrame(updateTuner);
+    }
+
+    // ==========================================
+    // 윈도우 화면 & 오디오 실시간 녹화 모듈
+    // ==========================================
+    let mediaRecorder = null, recordedChunks = [], recordStream = null;
+    const btnRecord = document.getElementById('btn-record');
+
+    btnRecord.addEventListener('click', async () => {
+      if (mediaRecorder && mediaRecorder.state === "recording") {
+        stopRecording();
+      } else {
+        await startRecording();
+      }
+    });
+
+    async function startRecording() {
+      try {
+        recordStream = await navigator.mediaDevices.getDisplayMedia({
+          video: { displaySurface: "window" },
+          audio: true
+        });
+
+        recordedChunks = [];
+        const options = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') 
+          ? { mimeType: 'video/webm;codecs=vp9,opus' } : { mimeType: 'video/webm' };
+
+        mediaRecorder = new MediaRecorder(recordStream, options);
+        mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunks, { type: 'video/webm' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `copy_app_recording_${Date.now()}.webm`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+
+          btnRecord.innerText = "🎥 영상 녹화 시작";
+          btnRecord.className = "record-btn";
+          statusText.style.color = "#00f2fe";
+          statusText.innerText = "녹화 영상이 저장되었습니다!";
+        };
+
+        recordStream.getVideoTracks()[0].onended = () => stopRecording();
+
+        mediaRecorder.start(1000);
+        btnRecord.innerText = "⏹️ 녹화 중지 및 저장";
+        btnRecord.style.background = "#ff4b4b";
+        statusText.style.color = "#ff007f";
+        statusText.innerText = "⏺️ 화면 녹화 진행 중...";
+      } catch (err) {
+        if (err.name !== 'NotAllowedError') alert("녹화 시작 실패: " + err.message);
+      }
+    }
+
+    function stopRecording() {
+      if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+      if (recordStream) recordStream.getTracks().forEach(track => track.stop());
+    }
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+    }
+  </script>
+</body>
+</html>
