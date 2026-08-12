@@ -23,7 +23,7 @@
     
     .controls-main { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 16px; }
     
-    /* 데스크톱/모바일 반응형 비디오 모니터 박스 */
+    /* 반응형 비디오 모니터 박스 */
     .video-preview-box {
       display: none;
       width: 100%;
@@ -235,7 +235,7 @@
     const btnPlay = document.getElementById('btn-play');
     const statusText = document.getElementById('status-text');
 
-    // 실제 음원 데이터 PCM 피크 100% 추출 엔진
+    // 실제 PCM 파형 분석기
     async function extractRealPeaks(file) {
       try {
         const arrayBuffer = await file.arrayBuffer();
@@ -243,8 +243,8 @@
         const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
         ctx.close();
 
-        const channelData = audioBuffer.getChannelData(0); // 좌측 채널 진폭 데이터
-        const sampleCount = 600; // 파형 세밀도
+        const channelData = audioBuffer.getChannelData(0);
+        const sampleCount = 600;
         const blockSize = Math.floor(channelData.length / sampleCount);
         const peaks = [];
         let maxPeak = 0;
@@ -260,13 +260,12 @@
           if (peak > maxPeak) maxPeak = peak;
         }
 
-        // 실제 음량 진폭 정규화 (Dynamic Range Normalization)
         if (maxPeak > 0) {
-          return peaks.map(p => p / maxPeak);
+          return { peaks: peaks.map(p => p / maxPeak), duration: audioBuffer.duration };
         }
-        return peaks;
+        return { peaks, duration: audioBuffer.duration };
       } catch (e) {
-        console.warn("실제 파형 추출 오류 (기본 렌더러 전환):", e);
+        console.warn("PCM 디코딩 불가 (가상 파형 안전 동기화 적용):", e);
         return null;
       }
     }
@@ -284,6 +283,7 @@
       }
     }
 
+    // A-B 구간 선택 및 미디어 시간 동기화
     wsRegions.on('region-created', (region) => {
       wsRegions.getRegions().forEach((r) => { if (r !== region) r.remove(); });
       activeRegion = region;
@@ -293,13 +293,13 @@
       statusText.innerText = `구간 반복 설정 (${region.start.toFixed(2)}s ~ ${region.end.toFixed(2)}s)`;
     });
 
-    // 파일 로딩 및 실제 파형 적용
+    // 파일 로딩
     document.getElementById('audio-file').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
       statusText.style.color = '#00f2fe';
-      statusText.innerText = `실제 파형 정밀 분석 중: ${file.name}...`;
+      statusText.innerText = `미디어 및 오디오 분석 중: ${file.name}...`;
       isReady = false;
 
       mediaEl.pause();
@@ -312,25 +312,28 @@
       videoZoomPanel.style.display = isVideo ? 'block' : 'none';
 
       const fileUrl = URL.createObjectURL(file);
+      mediaEl.src = fileUrl;
 
-      // 실제 PCM 파형 정밀 생성
-      const realPeaks = await extractRealPeaks(file);
+      // 동영상 및 음원 메타데이터 준비 완료 시 안전하게 파형 바인딩
+      mediaEl.onloadedmetadata = async () => {
+        const duration = mediaEl.duration || 10;
+        const realData = await extractRealPeaks(file);
 
-      if (realPeaks && realPeaks.length > 0) {
-        wavesurfer.load(fileUrl, [realPeaks]);
-      } else {
-        wavesurfer.load(fileUrl);
-      }
+        if (realData && realData.peaks) {
+          wavesurfer.load(fileUrl, [realData.peaks], realData.duration);
+        } else {
+          // 동영상(WebM) 등 PCM 디코딩 불가 시 가상 파형과 Duration을 명시적으로 주입하여 WaveSurfer 멈춤 완벽 방지!
+          const fallbackPeaks = Array.from({ length: 300 }, (_, i) => Math.sin(i * 0.1) * 0.3 + 0.5);
+          wavesurfer.load(fileUrl, [fallbackPeaks], duration);
+        }
 
-      mediaEl.onloadedmetadata = () => {
         isReady = true;
         statusText.style.color = '#00ff88';
         statusText.innerText = isVideo 
-          ? '★ 실제 파형 생성 완료! [▶ 재생]을 누르거나 파형을 드래그해 정밀 구간을 선택하세요.' 
-          : '★ 실제 파형 생성 완료! [▶ 재생]을 누르거나 파형을 드래그해 정밀 구간을 선택하세요.';
+          ? '★ 동영상 로드 완료! [▶ 재생]을 누르거나 파형을 드래그해 구간 반복을 설정해보세요.' 
+          : '★ 음원 로드 완료! [▶ 재생]을 누르거나 파형을 드래그해 구간 반복을 설정해보세요.';
       };
 
-      mediaEl.src = fileUrl;
       mediaEl.load();
     });
 
