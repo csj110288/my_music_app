@@ -73,8 +73,8 @@
   <div class="container">
     <h1>🎸 Musician Copy & Studio App</h1>
 
-    <!-- 동영상 및 음원 모두 호환되는 숨겨진 미디어 엔진 -->
-    <video id="media-engine" crossorigin="anonymous" style="display:none;"></video>
+    <!-- 통합 미디어 엔진 -->
+    <video id="media-engine" style="display:none;"></video>
 
     <div class="controls-main">
       <input type="file" id="audio-file" accept="audio/*,video/*">
@@ -163,8 +163,9 @@
 
     wsRegions.enableDragSelection({ color: 'rgba(0, 242, 254, 0.3)' });
 
-    let pitchShiftNode = null;
+    let nativeAudioCtx = null;
     let mediaSourceNode = null;
+    let pitchShiftNode = null;
     let isReady = false;
     let activeRegion = null;
 
@@ -179,6 +180,23 @@
     const btnPlay = document.getElementById('btn-play');
     const statusText = document.getElementById('status-text');
 
+    // 브라우저 순수 오디오 엔진 안정화 생성 (1회 고정)
+    async function ensureAudioPipeline() {
+      if (!nativeAudioCtx) {
+        nativeAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        Tone.setContext(nativeAudioCtx);
+
+        pitchShiftNode = new Tone.PitchShift(0).toDestination();
+        mediaSourceNode = nativeAudioCtx.createMediaElementSource(mediaEl);
+        mediaSourceNode.connect(pitchShiftNode.input);
+      }
+
+      if (nativeAudioCtx.state === 'suspended') {
+        await nativeAudioCtx.resume();
+      }
+    }
+
+    // A-B 구간 반복 설정
     wsRegions.on('region-created', (region) => {
       wsRegions.getRegions().forEach((r) => { if (r !== region) r.remove(); });
       activeRegion = region;
@@ -188,72 +206,62 @@
       statusText.innerText = `구간 반복 설정 (${region.start.toFixed(2)}s ~ ${region.end.toFixed(2)}s)`;
     });
 
+    wsRegions.on('region-updated', (region) => {
+      activeRegion = region;
+      statusText.innerText = `구간 변경됨 (${region.start.toFixed(2)}s ~ ${region.end.toFixed(2)}s)`;
+    });
+
     // 파일 로딩
     document.getElementById('audio-file').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
       statusText.style.color = '#00f2fe';
-      statusText.innerText = `파일 분석 및 오디오 연결 중: ${file.name}...`;
+      statusText.innerText = `미디어 불러오는 중: ${file.name}...`;
       isReady = false;
 
+      mediaEl.pause();
+      wsRegions.clearRegions();
+      activeRegion = null;
+
+      const fileUrl = URL.createObjectURL(file);
+
       try {
-        await Tone.start();
-
-        const fileUrl = URL.createObjectURL(file);
-        mediaEl.src = fileUrl;
-
-        // Web Audio 노드 단 1회 연결 (중복 생성 에러 방지)
-        if (!pitchShiftNode) {
-          pitchShiftNode = new Tone.PitchShift(0).toDestination();
-          mediaSourceNode = Tone.context.createMediaElementSource(mediaEl);
-          Tone.connect(mediaSourceNode, pitchShiftNode);
-        }
-
-        mediaEl.onloadedmetadata = () => {
-          isReady = true;
-          applyParams();
-
-          // 녹화 영상 파일일 경우 가상 파형(Fallback Peaks) 안전 생성
-          if (wavesurfer) {
-            try {
-              const dummyPeaks = [];
-              for (let i = 0; i < 200; i++) {
-                dummyPeaks.push(Math.sin(i * 0.1) * 0.4 + 0.5);
-              }
-              wavesurfer.load(fileUrl, [dummyPeaks]);
-            } catch (err) {
-              console.log("파형 렌더링 대체 처리 완료");
-            }
-          }
-
-          statusText.style.color = '#00ff88';
-          statusText.innerText = '★ 준비 완료! 파형을 마우스로 드래그하여 반복 구간을 정해보세요.';
-        };
+        await wavesurfer.load(fileUrl);
       } catch (err) {
-        console.error(err);
-        statusText.style.color = '#ff4b4b';
-        statusText.innerText = `파일 로딩 에러: ${err.message}`;
+        console.log("파형 렌더링 동기화");
       }
+
+      isReady = true;
+      applyParams();
+      statusText.style.color = '#00ff88';
+      statusText.innerText = '★ 준비 완료! [재생 / 일시정지] 버튼을 누르거나 파형을 드래그해보세요.';
     });
 
-    // A-B 구간 반복 추적
+    // 재생 위치 추적 및 루프
     mediaEl.addEventListener('timeupdate', () => {
       if (activeRegion && mediaEl.currentTime >= activeRegion.end) {
         mediaEl.currentTime = activeRegion.start;
       }
     });
 
+    // 재생 / 일시정지 (안전한 엔진 가동)
     async function togglePlay() {
-      if (!isReady) return alert('파일 로딩이 완료될 때까지 기다려주세요.');
-      if (Tone.context.state !== 'running') await Tone.start();
+      if (!isReady) return alert('파일을 먼저 선택해 주세요.');
 
-      if (mediaEl.paused) {
-        mediaEl.play();
-        btnPlay.innerText = "일시정지";
-      } else {
-        mediaEl.pause();
-        btnPlay.innerText = "재생 / 일시정지";
+      try {
+        await ensureAudioPipeline();
+
+        if (mediaEl.paused) {
+          await mediaEl.play();
+          btnPlay.innerText = "일시정지";
+        } else {
+          mediaEl.pause();
+          btnPlay.innerText = "재생 / 일시정지";
+        }
+      } catch (err) {
+        console.error(err);
+        alert('재생 처리 오류: ' + err.message);
       }
     }
 
@@ -265,6 +273,7 @@
       statusText.innerText = '구간 반복이 해제되었습니다.';
     });
 
+    // 속도 및 키 조절
     function applyParams() {
       const speed = parseFloat(sliderSpeed.value);
       const targetSemitones = parseInt(sliderPitch.value);
