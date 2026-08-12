@@ -112,7 +112,7 @@
 
     <div class="controls-main">
       <input type="file" id="audio-file" accept="audio/*,video/*">
-      <button id="btn-play">재생 / 일시정지</button>
+      <button id="btn-play">▶ 재생</button>
       <button id="btn-clear-loop" class="secondary">구간 해제</button>
       <button id="btn-record" class="record-btn">🎥 영상 녹화 시작</button>
     </div>
@@ -216,6 +216,7 @@
 
     wsRegions.enableDragSelection({ color: 'rgba(0, 242, 254, 0.3)' });
 
+    let isAudioPipelineCreated = false;
     let mediaSourceNode = null;
     let pitchShiftNode = null;
     let isReady = false;
@@ -234,15 +235,17 @@
     const btnPlay = document.getElementById('btn-play');
     const statusText = document.getElementById('status-text');
 
+    // [중요] 오디오 파이프라인 단 1회 고정 연결 (A value with the given key 오류 완전 예방)
     async function ensureAudioPipeline() {
       if (Tone.context.state !== 'running') {
         await Tone.start();
       }
 
-      if (!mediaSourceNode) {
-        pitchShiftNode = new Tone.PitchShift(0);
-        mediaSourceNode = Tone.getContext().createMediaElementSource(mediaEl);
-        applyParams(); // 파이프라인 생성 즉시 스피커 노드 연결
+      if (!isAudioPipelineCreated) {
+        pitchShiftNode = new Tone.PitchShift(0).toDestination();
+        const rawCtx = Tone.getContext().rawContext || Tone.context;
+        mediaSourceNode = rawCtx.createMediaElementSource(mediaEl);
+        isAudioPipelineCreated = true;
       }
     }
 
@@ -255,8 +258,8 @@
       statusText.innerText = `구간 반복 설정 (${region.start.toFixed(2)}s ~ ${region.end.toFixed(2)}s)`;
     });
 
-    // 파일 로딩 (HTML5 표준 이벤트 기반 안전 연결)
-    document.getElementById('audio-file').addEventListener('change', (e) => {
+    // 파일 로딩
+    document.getElementById('audio-file').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
@@ -265,7 +268,7 @@
       isReady = false;
 
       mediaEl.pause();
-      btnPlay.innerText = "재생 / 일시정지"; // 파일 선택 시 버튼 상태 확실하게 초기화
+      btnPlay.innerText = "▶ 재생";
       wsRegions.clearRegions();
       activeRegion = null;
 
@@ -275,18 +278,23 @@
 
       const fileUrl = URL.createObjectURL(file);
 
+      // 파형 안전 생성 (MP3는 디코딩, WebM 녹화본은 가상 파형 안전 매핑)
+      file.arrayBuffer().then(buf => {
+        return Tone.context.decodeAudioData(buf);
+      }).then(audioBuf => {
+        wavesurfer.loadAudioBuffer(audioBuf);
+      }).catch(() => {
+        const dummyPeaks = Array.from({ length: 300 }, (_, i) => Math.sin(i * 0.08) * 0.3 + 0.5);
+        const duration = mediaEl.duration || 30;
+        wavesurfer.load('', [dummyPeaks], duration);
+      });
+
       mediaEl.onloadedmetadata = () => {
         isReady = true;
-        applyParams();
         statusText.style.color = '#00ff88';
         statusText.innerText = isVideo 
-          ? '★ 동영상 로드 완료! [재생 / 일시정지] 버튼을 누르거나 파형을 드래그해보세요.' 
-          : '★ 음원 로드 완료! [재생 / 일시정지] 버튼을 누르거나 파형을 드래그해보세요.';
-      };
-
-      mediaEl.onerror = () => {
-        statusText.style.color = '#ff4b4b';
-        statusText.innerText = '미디어 파일 읽기 오류가 발생했습니다.';
+          ? '★ 동영상 로드 완료! [▶ 재생] 버튼을 누르거나 파형을 드래그해보세요.' 
+          : '★ 음원 로드 완료! [▶ 재생] 버튼을 누르거나 파형을 드래그해보세요.';
       };
 
       mediaEl.src = fileUrl;
@@ -299,19 +307,24 @@
       }
     });
 
+    mediaEl.addEventListener('ended', () => {
+      btnPlay.innerText = "▶ 재생";
+    });
+
+    // 재생 / 일시정지
     async function togglePlay() {
       if (!isReady) return alert('파일을 먼저 선택해 주세요.');
 
       try {
         await ensureAudioPipeline();
-        applyParams(); // 재생 클릭 시 파이프라인 재확인 및 소리 직결
+        applyParams();
 
         if (mediaEl.paused) {
           await mediaEl.play();
-          btnPlay.innerText = "일시정지";
+          btnPlay.innerText = "⏸️ 일시정지";
         } else {
           mediaEl.pause();
-          btnPlay.innerText = "재생 / 일시정지";
+          btnPlay.innerText = "▶ 재생";
         }
       } catch (err) {
         console.error(err);
@@ -336,18 +349,21 @@
       if (mediaEl && mediaSourceNode) {
         mediaEl.playbackRate = speed;
 
-        if (targetSemitones === 0) {
-          mediaEl.preservesPitch = true;
-          Tone.disconnect(mediaSourceNode);
-          mediaSourceNode.connect(Tone.getContext().destination);
-        } else {
-          mediaEl.preservesPitch = false;
-          Tone.disconnect(mediaSourceNode);
-          Tone.connect(mediaSourceNode, pitchShiftNode);
-          pitchShiftNode.toDestination();
+        const speedPitchOffset = 12 * Math.log2(speed);
+        const finalShift = targetSemitones - speedPitchOffset;
 
-          const speedPitchOffset = 12 * Math.log2(speed);
-          pitchShiftNode.pitch = targetSemitones - speedPitchOffset;
+        mediaSourceNode.disconnect();
+
+        if (Math.abs(finalShift) < 0.01) {
+          // HQ 원음 직결
+          mediaEl.preservesPitch = true;
+          const rawCtx = Tone.getContext().rawContext || Tone.context;
+          mediaSourceNode.connect(rawCtx.destination);
+        } else {
+          // 키 변경 시 PitchShift 노드 가동
+          mediaEl.preservesPitch = false;
+          Tone.connect(mediaSourceNode, pitchShiftNode);
+          pitchShiftNode.pitch = finalShift;
         }
       }
 
@@ -405,7 +421,7 @@
     window.addEventListener('touchmove', (e) => {
       if (isDragging && e.touches.length === 1) {
         panX = e.touches[0].clientX - startX;
-        panY = e.touches[0].clientY - startY;
+        panY = e.clientY - startY;
         updateVideoTransform();
       }
     });
