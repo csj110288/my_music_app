@@ -20,14 +20,15 @@
     body { background-color: #121212; color: #ffffff; margin: 0; padding: 16px; text-align: center; }
     .container { max-width: 850px; margin: 0 auto; background: #1e1e1e; padding: 20px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); position: relative; }
     
-    /* Header & Menu Styles */
+    /* Header Styles */
     .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
     h1 { font-size: 1.5rem; color: #4facfe; margin: 0; }
-    .menu-btn { background: #333; color: #fff; border: 1px solid #555; font-size: 1.1rem; padding: 6px 14px; border-radius: 8px; cursor: pointer; }
+    .menu-btn { background: #333; color: #fff; border: 1px solid #555; font-size: 0.9rem; padding: 8px 14px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+    .menu-btn:hover { background: #4facfe; color: #000; }
 
-    .controls-main { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 16px; }
+    .controls-main { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center; margin-bottom: 16px; }
     
-    /* 비디오 화면 개선 */
+    /* 비디오 화면 */
     .video-preview-box {
       display: none;
       width: 100%;
@@ -107,12 +108,12 @@
     button:hover { opacity: 0.9; transform: translateY(-1px); }
     .status { font-size: 0.88rem; color: #00f2fe; margin-top: 6px; font-weight: bold; word-break: break-all; }
 
-    /* Modal (팝업창) Styles */
+    /* Modal Styles */
     .modal-overlay {
       display: none;
       position: fixed;
       top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.8);
+      background: rgba(0,0,0,0.85);
       z-index: 1000;
       justify-content: center;
       align-items: center;
@@ -122,24 +123,42 @@
       padding: 20px;
       border-radius: 16px;
       width: 95%;
-      max-width: 680px;
-      max-height: 90vh;
+      max-width: 820px;
+      max-height: 94vh;
       overflow-y: auto;
       border: 1px solid #4facfe;
       text-align: left;
       position: relative;
       box-shadow: 0 0 25px rgba(0,242,254,0.3);
     }
-    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid #444; padding-bottom: 10px; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #444; padding-bottom: 8px; }
     .modal-title { font-size: 1.2rem; font-weight: bold; color: #00f2fe; margin: 0; }
     .close-btn { background: none; border: none; color: #aaa; font-size: 1.6rem; cursor: pointer; padding: 0; }
     .menu-list { display: flex; flex-direction: column; gap: 12px; }
     .menu-item-btn { width: 100%; text-align: left; padding: 14px 16px; background: #333; color: #fff; border: 1px solid #444; border-radius: 8px; font-size: 1rem; }
     .menu-item-btn:hover { background: #4facfe; color: #000; }
 
-    /* 편집기 전용 스타일 & 아이콘 툴바 */
-    .editor-section { background: #1a1a1a; padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #333; }
-    .editor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 10px; }
+    /* 편집기 다중 트랙 전용 스타일 */
+    .track-box {
+      background: #1a1a1a;
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      border: 2px solid #333;
+      transition: border-color 0.2s;
+    }
+    .track-box.active {
+      border-color: #00f2fe;
+    }
+    .track-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+      font-size: 0.88rem;
+      font-weight: bold;
+    }
+    .editor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-top: 10px; }
     
     .editor-toolbar {
       display: flex;
@@ -155,12 +174,30 @@
     }
     .editor-toolbar button {
       padding: 6px 10px;
-      font-size: 0.9rem;
+      font-size: 0.82rem;
       display: inline-flex;
       align-items: center;
-      gap: 4px;
+      gap: 3px;
     }
-    .editor-toolbar .divider { color: #555; margin: 0 4px; }
+    .editor-toolbar .divider { color: #555; margin: 0 2px; }
+
+    /* 마우스/터치 자율 이동 전용 스타일 */
+    .wavesurfer-region {
+      touch-action: none !important;
+      cursor: grab !important;
+      border: 1.5px dashed rgba(255, 255, 255, 0.7) !important;
+      border-radius: 4px;
+      z-index: 10 !important;
+    }
+    .wavesurfer-region:active {
+      cursor: grabbing !important;
+      border-color: #00f2fe !important;
+    }
+    #editor-waveform-1 ::part(cursor), #editor-waveform-2 ::part(cursor), #waveform ::part(cursor) {
+      z-index: 99 !important;
+      background-color: #ff0000 !important;
+      width: 2px !important;
+    }
   </style>
 </head>
 <body>
@@ -168,18 +205,19 @@
   <div class="container">
     <div class="header-bar">
       <h1>🎸 Musician Copy & Studio</h1>
-      <button class="menu-btn" id="btn-open-menu">☰ 메뉴</button>
     </div>
 
+    <!-- 메뉴 버튼을 파일 선택 버튼 앞으로 배치 -->
     <div class="controls-main">
+      <button class="menu-btn" id="btn-open-menu">☰ 메뉴</button>
       <input type="file" id="audio-file" accept="audio/*,video/*">
       <button id="btn-play">▶ 재생</button>
-      <button id="btn-restart" class="secondary">⏮️ 처음부터</button>
+      <button id="btn-restart" class="secondary">⏮ 처음으로</button>
       <button id="btn-clear-loop" class="secondary">구간 해제</button>
       <button id="btn-toggle-fit" class="secondary">📺 화면 꽉 채우기</button>
     </div>
 
-    <!-- 비디오 모니터링 화면 -->
+    <!-- 비디오 화면 -->
     <div class="video-preview-box" id="video-container">
       <video id="media-engine"></video>
     </div>
@@ -192,7 +230,7 @@
       <input type="range" id="slider-video-zoom" min="1.0" max="2.5" step="0.1" value="1.0">
     </div>
 
-    <!-- 파형 콘솔 -->
+    <!-- 메인 파형 콘솔 -->
     <div class="waveform-section">
       <div id="waveform"></div>
       
@@ -261,58 +299,84 @@
         <button class="close-btn" id="btn-close-menu">&times;</button>
       </div>
       <div class="menu-list">
-        <button class="menu-item-btn" id="menu-btn-editor">✂️ 전문 오디오 편집기 스튜디오 (새창)</button>
+        <button class="menu-item-btn" id="menu-btn-editor">✂️ 멀티트랙 오디오 스튜디오 편집기 (새창)</button>
       </div>
     </div>
   </div>
 
-  <!-- [독립 편집기 새창 모달] -->
+  <!-- [독립 멀티트랙 편집기 새창 모달] -->
   <div class="modal-overlay" id="editor-modal">
     <div class="modal-content">
       <div class="modal-header">
-        <h2 class="modal-title">✂️ 오디오 스튜디오 편집기</h2>
+        <h2 class="modal-title">🎼 2-Track 멀티트랙 스튜디오 편집기</h2>
         <button class="close-btn" id="btn-close-editor">&times;</button>
       </div>
 
-      <!-- 1. 파일 불러오기 -->
-      <div class="editor-section">
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-          <div>
-            <label style="font-weight:bold; color:#00f2fe;">1. 편집할 파일 불러오기: </label>
-            <input type="file" id="editor-file" accept="audio/*,video/*">
-          </div>
-          <button id="btn-append-file" class="secondary" style="font-size:0.8rem;">➕ 이어 붙이기</button>
-          <input type="file" id="append-file-input" accept="audio/*,video/*" style="display:none;">
+      <!-- 트랙 1 (상단) -->
+      <div class="track-box active" id="track-box-0">
+        <div class="track-header">
+          <span style="color:#00f2fe;">🎵 Track 1 (상단 트랙)</span>
+          <input type="file" id="editor-file-1" accept="audio/*,video/*" style="font-size:0.8rem;">
         </div>
+        <div id="editor-waveform-1" style="min-height:75px; background:#111; border-radius:6px; overflow:hidden;"></div>
       </div>
 
-      <!-- 2. 파형 모니터링 & 아이콘 버튼 툴바 -->
-      <div class="editor-section">
-        <div id="editor-waveform" style="min-height:70px;"></div>
-        
-        <!-- 간단 기호 버튼 툴바 -->
-        <div class="editor-toolbar">
-          <button id="btn-ed-play" title="재생 / 일시정지">▶ 재생</button>
-          <button id="btn-ed-restart" class="secondary" title="처음부터 재생">⏮ 처음부터</button>
-          <span class="divider">|</span>
-          <button id="btn-ed-crop" class="secondary" title="선택 구간만 남기기">✂️ 구간남김</button>
-          <button id="btn-ed-delete" class="secondary" title="선택 구간 삭제하기">🗑️ 구간삭제</button>
-          <span class="divider">|</span>
-          <button id="btn-ed-copy" class="secondary" title="선택 구간 복사">📋 복사</button>
-          <button id="btn-ed-paste" class="secondary" title="현재 커서 위치에 붙여넣기">📌 붙여넣기</button>
+      <!-- 트랙 2 (하단) -->
+      <div class="track-box" id="track-box-1">
+        <div class="track-header">
+          <span style="color:#ff007f;">🎵 Track 2 (하단 트랙)</span>
+          <input type="file" id="editor-file-2" accept="audio/*,video/*" style="font-size:0.8rem;">
         </div>
-
-        <div style="font-size:0.78rem; color:#aaa; margin-top:6px;">
-          * 마우스로 드래그하여 구간을 선택한 후 위 기호 버튼을 클릭하세요.
-        </div>
+        <div id="editor-waveform-2" style="min-height:75px; background:#111; border-radius:6px; overflow:hidden;"></div>
       </div>
 
-      <!-- 3. 볼륨 및 Fade In/Out -->
-      <div class="editor-section">
+      <!-- 파형 정밀 확대 슬라이더 -->
+      <div style="margin-top: 6px; margin-bottom: 6px; background:#1a1a1a; padding:8px; border-radius:8px;">
+        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px; color: #4facfe;">
+          <span>🔍 Waveform Zoom (파형 정밀 확대)</span>
+          <span id="editor-zoom-val" style="color: #00f2fe;">기본 크기</span>
+        </div>
+        <input type="range" id="editor-slider-zoom" min="0" max="200" step="5" value="0">
+      </div>
+
+      <!-- 편집 버튼 툴바 -->
+      <div class="editor-toolbar">
+        <button id="btn-ed-undo" class="secondary" style="border:1px solid #ffbb00; color:#ffbb00; font-weight:bold;" title="이전 편집 되돌리기 (최대 25회)">
+          ↩️ 되돌리기
+        </button>
+        <span class="divider">|</span>
+        <button id="btn-ed-play">▶ 전체동시재생</button>
+        <button id="btn-ed-play-chunk" class="record-btn">▶ 선택 덩어리만</button>
+        <button id="btn-ed-restart" class="secondary">⏮ 처음으로</button>
+        <span class="divider">|</span>
+        <button id="btn-ed-split" class="secondary" style="background:#00f2fe; color:#000; font-weight:bold;">✂️ 자르기</button>
+        <button id="btn-ed-shift-left" class="secondary">◀ 0.5초</button>
+        <button id="btn-ed-shift-right" class="secondary">0.5초 ▶</button>
+        <span class="divider">|</span>
+        <button id="btn-ed-copy" class="secondary">📋 복사</button>
+        <button id="btn-ed-paste" class="secondary">📌 붙여넣기</button>
+        <button id="btn-ed-delete" class="secondary">🗑️ 삭제</button>
+      </div>
+
+      <div style="font-size:0.78rem; color:#aaa; margin-top:6px;" id="editor-mode-desc">
+        * 음원 덩어리를 <b>마우스나 손가락으로 잡고 뒤로 끌어다 놓으면</b> 파형이 해당 위치로 이동하여 배치됩니다.
+      </div>
+
+      <!-- 선택한 덩어리별 볼륨 및 재생속도 설정 -->
+      <div style="background:#1a1a1a; padding:10px; border-radius:8px; margin-top:10px;">
+        <div style="font-weight:bold; color:#00f2fe; margin-bottom:6px;" id="selected-chunk-label">선택된 덩어리 설정</div>
         <div class="editor-grid">
           <div>
-            <label style="font-size:0.85rem; color:#ccc;">볼륨: <span id="editor-vol-val" style="color:#00f2fe;">100%</span></label>
+            <label style="font-size:0.85rem; color:#ccc;">
+              볼륨: <span id="editor-vol-val" style="color:#00f2fe;">100%</span>
+            </label>
             <input type="range" id="editor-volume" min="0" max="2" step="0.05" value="1">
+          </div>
+          <div>
+            <label style="font-size:0.85rem; color:#ccc;">
+              재생 속도: <span id="editor-speed-val" style="color:#00f2fe;">1.0x</span>
+            </label>
+            <input type="range" id="editor-speed" min="0.5" max="4.0" step="0.1" value="1.0">
           </div>
           <div>
             <label style="font-size:0.85rem; color:#ccc;">Fade In (시작):</label>
@@ -325,13 +389,13 @@
         </div>
       </div>
 
-      <!-- 4. 내보내기 및 메인 적용 -->
+      <!-- 수동 저장 및 메인 적용 -->
       <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
-        <button id="btn-editor-process">⚡ 파일 추출 저장</button>
+        <button id="btn-editor-process">💾 2개 트랙 수동 저장</button>
         <button id="btn-editor-apply-main" class="record-btn">🎸 메인 플레이어로 적용</button>
       </div>
 
-      <div class="status" id="editor-status-text" style="margin-top:10px;">편집할 파일을 선택해 주세요.</div>
+      <div class="status" id="editor-status-text" style="margin-top:8px;">트랙에 음원 파일(MP3, MP4 등)을 선택해 주세요.</div>
     </div>
   </div>
 
@@ -347,7 +411,7 @@
       media: mediaEl,
       waveColor: '#4f5b66',
       progressColor: '#00f2fe',
-      cursorColor: '#ff4b4b',
+      cursorColor: '#ff0000',
       cursorWidth: 2,
       height: 80,
       responsive: true,
@@ -460,13 +524,10 @@
 
     btnPlay.addEventListener('click', togglePlay);
 
-    btnRestart.addEventListener('click', async () => {
+    btnRestart.addEventListener('click', () => {
       if (!isReady) return alert('파일을 먼저 선택해 주세요.');
       mediaEl.currentTime = 0;
       if (wavesurfer) wavesurfer.setTime(0);
-      if (mediaEl.paused) {
-        await togglePlay();
-      }
     });
 
     document.getElementById('btn-clear-loop').addEventListener('click', () => {
@@ -542,7 +603,7 @@
     document.getElementById('btn-reset-pitch').addEventListener('click', () => { sliderPitch.value = 0; applyParams(); });
 
     // ==========================================
-    // 독립 오디오 스튜디오 편집기 모달 제어
+    // 🎼 2-Track 멀티트랙 스튜디오 편집기 (파형 실시간 동기화 엔진)
     // ==========================================
     const menuModal = document.getElementById('menu-modal');
     const editorModal = document.getElementById('editor-modal');
@@ -554,218 +615,468 @@
     btnCloseMenu.addEventListener('click', () => { menuModal.style.display = 'none'; });
     btnCloseEditor.addEventListener('click', () => {
       editorModal.style.display = 'none';
-      if (editorWs && editorWs.isPlaying()) editorWs.pause();
+      stopAllEditorTracks();
     });
 
     document.getElementById('menu-btn-editor').addEventListener('click', () => {
       menuModal.style.display = 'none';
       editorModal.style.display = 'flex';
-      initEditorWaveSurfer();
+      initMultitrackEditor();
     });
 
-    let editorWs = null, editorWsRegions = null, editorRegion = null;
-    let editorAudioBuffer = null;
-    let clipboardAudioBuffer = null; // 복사된 클립보드 오디오
+    let tracks = [
+      { id: 0, containerId: '#editor-waveform-1', fileInputId: 'editor-file-1', ws: null, wsRegions: null, chunks: [], selectedChunkIndex: 0 },
+      { id: 1, containerId: '#editor-waveform-2', fileInputId: 'editor-file-2', ws: null, wsRegions: null, chunks: [], selectedChunkIndex: 0 }
+    ];
+    let activeTrackIdx = 0;
+    let clipboardChunk = null;
 
-    function initEditorWaveSurfer() {
-      if (!editorWs) {
-        editorWsRegions = WaveSurfer.Regions.create();
-        editorWs = WaveSurfer.create({
-          container: '#editor-waveform',
-          waveColor: '#7f00ff',
-          progressColor: '#00f2fe',
-          cursorColor: '#ff007f',
-          height: 70,
-          plugins: [editorWsRegions]
+    let isDraggingRegion = false;
+    let draggedTrackIdx = null;
+
+    // 히스토리(되돌리기) 스택 관리 (최대 25단계)
+    let historyStack = [];
+    const MAX_HISTORY = 25;
+
+    function saveHistory() {
+      const hasAnyChunks = tracks.some(t => t.chunks.length > 0);
+      if (!hasAnyChunks) return;
+
+      const state = tracks.map(tr => ({
+        id: tr.id,
+        selectedChunkIndex: tr.selectedChunkIndex,
+        chunks: tr.chunks.map(c => ({
+          id: c.id,
+          buffer: c.buffer,
+          volume: c.volume,
+          speed: c.speed,
+          startTime: c.startTime,
+          color: c.color
+        }))
+      }));
+
+      historyStack.push(state);
+      if (historyStack.length > MAX_HISTORY) historyStack.shift();
+    }
+
+    function undo() {
+      if (historyStack.length <= 1) {
+        return alert("더 이상 되돌릴 이전 편집 기록이 없습니다.");
+      }
+
+      historyStack.pop();
+      const prevState = historyStack[historyStack.length - 1];
+
+      prevState.forEach((savedTr, idx) => {
+        tracks[idx].chunks = savedTr.chunks.map(c => ({ ...c }));
+        tracks[idx].selectedChunkIndex = savedTr.selectedChunkIndex;
+        renderTrackChunks(idx, true);
+      });
+
+      document.getElementById('editor-status-text').innerText = `↩️ 이전 편집 상태로 복원되었습니다. (남은 되돌리기: ${historyStack.length - 1}회)`;
+    }
+
+    document.getElementById('btn-ed-undo').addEventListener('click', undo);
+
+    const chunkColors = [
+      'rgba(0, 242, 254, 0.55)', 
+      'rgba(255, 0, 127, 0.55)', 
+      'rgba(127, 0, 255, 0.55)', 
+      'rgba(0, 255, 136, 0.55)', 
+      'rgba(255, 187, 0, 0.55)'
+    ];
+
+    function setActiveTrack(idx) {
+      activeTrackIdx = idx;
+      document.querySelectorAll('.track-box').forEach((box, i) => {
+        if (i === idx) box.classList.add('active');
+        else box.classList.remove('active');
+      });
+      updateChunkControlUI();
+    }
+
+    function initMultitrackEditor() {
+      tracks.forEach((tr, tIdx) => {
+        if (!tr.ws) {
+          tr.wsRegions = WaveSurfer.Regions.create();
+          tr.ws = WaveSurfer.create({
+            container: tr.containerId,
+            waveColor: tIdx === 0 ? '#00f2fe' : '#ff007f',
+            progressColor: '#ffffff',
+            cursorColor: '#ff0000',
+            cursorWidth: 2,
+            height: 75,
+            interact: true,
+            plugins: [tr.wsRegions]
+          });
+
+          // 📍 덩어리 클릭 이벤트
+          tr.wsRegions.on('region-clicked', (r, e) => {
+            e.stopPropagation();
+            setActiveTrack(tIdx);
+            if (r.id.startsWith('chunk-')) {
+              const cIdx = parseInt(r.id.replace('chunk-', ''));
+              if (!isNaN(cIdx) && tr.chunks[cIdx]) {
+                tr.selectedChunkIndex = cIdx;
+                
+                const wrapper = tr.ws.getWrapper();
+                if (wrapper && e) {
+                  const rect = wrapper.getBoundingClientRect();
+                  const clientX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+                  if (clientX) {
+                    const progress = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+                    tr.ws.setTime(progress * tr.ws.getDuration());
+                  }
+                }
+                renderTrackChunks(tIdx, false);
+              }
+            }
+          });
+
+          // ↔️ 마우스/터치로 블록 드래그 이동 중 실시간 시간 추적
+          tr.wsRegions.on('region-updated', (r) => {
+            if (r.id.startsWith('chunk-')) {
+              isDraggingRegion = true;
+              draggedTrackIdx = tIdx;
+              const cIdx = parseInt(r.id.replace('chunk-', ''));
+              if (!isNaN(cIdx) && tr.chunks[cIdx]) {
+                const spd = tr.chunks[cIdx].speed || 1.0;
+                const dur = tr.chunks[cIdx].buffer.duration / spd;
+                tr.chunks[cIdx].startTime = Math.max(0, r.start);
+                r.setOptions({ end: tr.chunks[cIdx].startTime + dur });
+                document.getElementById('editor-status-text').innerText = `↔ [Track ${tIdx + 1}] 음원 이동 중: 시작 ${tr.chunks[cIdx].startTime.toFixed(2)}초 (손을 떼면 확정됩니다)`;
+              }
+            }
+          });
+
+          tr.ws.on('interaction', () => {
+            setActiveTrack(tIdx);
+            document.getElementById('editor-status-text').innerText = `📍 [Track ${tIdx + 1}] 커서 위치: ${tr.ws.getCurrentTime().toFixed(2)}초`;
+          });
+
+          // 🎵 파일 로드
+          document.getElementById(tr.fileInputId).addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            document.getElementById('editor-status-text').innerText = `Track ${tIdx + 1} 음원 분석 및 로딩 중...`;
+            try {
+              const arrayBuffer = await file.arrayBuffer();
+              const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+              const decodedBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+              audioCtx.close();
+
+              tr.chunks = [{
+                id: Date.now(),
+                buffer: decodedBuffer,
+                volume: 1.0,
+                speed: 1.0,
+                startTime: 0,
+                color: chunkColors[0]
+              }];
+              tr.selectedChunkIndex = 0;
+              setActiveTrack(tIdx);
+              renderTrackChunks(tIdx, true);
+
+              saveHistory();
+              document.getElementById('editor-status-text').innerText = `★ Track ${tIdx + 1} 로드 완료! 블록을 잡아 뒤로 자유롭게 이동시켜보세요.`;
+            } catch (err) {
+              alert("디코딩 실패: " + err.message);
+            }
+          });
+        }
+      });
+
+      // 🎯 마우스/터치 드래그를 놓았을 때(pointerup/touchend) 파형과 무음 여백을 완벽하게 재합성!
+      const finishDragAndSync = () => {
+        if (isDraggingRegion && draggedTrackIdx !== null) {
+          const tIdx = draggedTrackIdx;
+          const tr = tracks[tIdx];
+          tr.chunks.sort((a, b) => a.startTime - b.startTime);
+          renderTrackChunks(tIdx, true); // 파형 데이터 실시간 재합성 및 위치 이동 반영
+          saveHistory();
+          document.getElementById('editor-status-text').innerText = `★ [Track ${tIdx + 1}] 음원 전체 이동 및 파형 동기화 완료!`;
+          isDraggingRegion = false;
+          draggedTrackIdx = null;
+        }
+      };
+
+      window.addEventListener('pointerup', finishDragAndSync);
+      window.addEventListener('touchend', finishDragAndSync);
+      window.addEventListener('mouseup', finishDragAndSync);
+    }
+
+    // Zoom
+    document.getElementById('editor-slider-zoom').addEventListener('input', (e) => {
+      const zoomPx = parseInt(e.target.value);
+      tracks.forEach(tr => { if (tr.ws) tr.ws.zoom(zoomPx); });
+      document.getElementById('editor-zoom-val').innerText = zoomPx === 0 ? '기본 크기' : `${zoomPx}px/sec (확대)`;
+    });
+
+    // 트랙 렌더링 함수
+    function renderTrackChunks(tIdx, reloadWaveform = true) {
+      const tr = tracks[tIdx];
+      if (!tr.chunks.length) {
+        tr.ws.empty();
+        updateChunkControlUI();
+        return;
+      }
+
+      // 파형과 무음 여백을 포함하여 WaveSurfer에 로드
+      if (reloadWaveform) {
+        const combined = combineChunksToBuffer(tr.chunks, true);
+        const wavBlob = bufferToWav(combined);
+        tr.ws.load(URL.createObjectURL(wavBlob));
+      }
+
+      if (tr.wsRegions) tr.wsRegions.clearRegions();
+
+      tr.chunks.forEach((chunk, idx) => {
+        const spd = chunk.speed || 1.0;
+        const duration = chunk.buffer.duration / spd;
+        const isSelected = (tIdx === activeTrackIdx && idx === tr.selectedChunkIndex);
+
+        tr.wsRegions.addRegion({
+          id: `chunk-${idx}`,
+          start: chunk.startTime,
+          end: chunk.startTime + duration,
+          color: isSelected ? 'rgba(0, 242, 254, 0.65)' : chunk.color,
+          drag: true, // 언제든 마우스/터치 드래그 이동 가능
+          resize: false,
+          content: `[${idx + 1}] ${Math.round(chunk.volume * 100)}% / ${(spd).toFixed(1)}x (↔ 이동)`
         });
+      });
 
-        editorWsRegions.enableDragSelection({ color: 'rgba(255, 0, 127, 0.3)' });
-        editorWsRegions.on('region-created', (r) => {
-          editorWsRegions.getRegions().forEach(reg => { if (reg !== r) reg.remove(); });
-          editorRegion = r;
-        });
+      if (tr.selectedChunkIndex >= tr.chunks.length) tr.selectedChunkIndex = Math.max(0, tr.chunks.length - 1);
+      updateChunkControlUI();
 
-        // 재생 상태 변경 시 버튼 아이콘 업데이트
-        editorWs.on('play', () => { document.getElementById('btn-ed-play').innerText = "⏸ 일시정지"; });
-        editorWs.on('pause', () => { document.getElementById('btn-ed-play').innerText = "▶ 재생"; });
+      const curZoom = parseInt(document.getElementById('editor-slider-zoom').value);
+      if (curZoom > 0) tr.ws.zoom(curZoom);
+    }
+
+    function updateChunkControlUI() {
+      const tr = tracks[activeTrackIdx];
+      if (tr.chunks.length > 0 && tr.selectedChunkIndex !== null && tr.chunks[tr.selectedChunkIndex]) {
+        const chunk = tr.chunks[tr.selectedChunkIndex];
+        document.getElementById('editor-volume').value = chunk.volume;
+        document.getElementById('editor-vol-val').innerText = `${Math.round(chunk.volume * 100)}%`;
+        document.getElementById('editor-speed').value = chunk.speed || 1.0;
+        document.getElementById('editor-speed-val').innerText = `${(chunk.speed || 1.0).toFixed(1)}x`;
+        document.getElementById('selected-chunk-label').innerText = `[Track ${activeTrackIdx + 1} - 덩어리 ${tr.selectedChunkIndex + 1}] 설정 (시작: ${chunk.startTime.toFixed(2)}초)`;
+      } else {
+        document.getElementById('selected-chunk-label').innerText = `[Track ${activeTrackIdx + 1}] 선택 덩어리 없음`;
+        document.getElementById('editor-vol-val').innerText = `100%`;
+        document.getElementById('editor-speed-val').innerText = `1.0x`;
       }
     }
 
-    function reloadEditorWaveform() {
-      if (!editorAudioBuffer) return;
-      const wavBlob = bufferToWav(editorAudioBuffer);
-      const url = URL.createObjectURL(wavBlob);
-      editorWs.load(url);
-      if (editorWsRegions) editorWsRegions.clearRegions();
-      editorRegion = null;
-    }
-
-    // 파일 불러오기
-    document.getElementById('editor-file').addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-
-      const editorStatus = document.getElementById('editor-status-text');
-      editorStatus.innerText = '음원 데이터 로딩 및 분석 중...';
-
-      try {
-        const arrayBuffer = await file.arrayBuffer();
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        editorAudioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-        audioCtx.close();
-
-        reloadEditorWaveform();
-        editorStatus.innerText = `★ 로드 완료: ${file.name}`;
-      } catch (err) {
-        alert("오디오 디코딩 실패: " + err.message);
-      }
-    });
-
-    // ➕ 음원 뒤에 이어 붙이기
-    document.getElementById('btn-append-file').addEventListener('click', () => {
-      if (!editorAudioBuffer) return alert('먼저 기본 음원 파일을 불러와주세요.');
-      document.getElementById('append-file-input').click();
-    });
-
-    document.getElementById('append-file-input').addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (!file || !editorAudioBuffer) return;
-
-      try {
-        const arrayBuffer = await file.arrayBuffer();
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const appendBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-        audioCtx.close();
-
-        editorAudioBuffer = concatAudioBuffers(editorAudioBuffer, appendBuffer);
-        reloadEditorWaveform();
-        document.getElementById('editor-status-text').innerText = `★ 음원이 뒤에 이어붙여졌습니다!`;
-      } catch (err) {
-        alert("붙이기 실패: " + err.message);
-      }
-    });
-
-    // ==========================================
-    // 편집기 기호 버튼 기능 구현
-    // ==========================================
-
-    // ▶ 재생 / 일시정지
+    // ▶ 전체 동시 재생
     document.getElementById('btn-ed-play').addEventListener('click', () => {
-      if (!editorWs) return;
-      editorWs.playPause();
+      const isAnyPlaying = tracks.some(tr => tr.ws && tr.ws.isPlaying());
+      if (isAnyPlaying) {
+        stopAllEditorTracks();
+      } else {
+        tracks.forEach(tr => { if (tr.ws && tr.chunks.length > 0) tr.ws.play(); });
+      }
     });
 
-    // ⏮ 처음부터 재생
+    function stopAllEditorTracks() {
+      tracks.forEach(tr => { if (tr.ws && tr.ws.isPlaying()) tr.ws.pause(); });
+    }
+
+    // ▶ 선택 덩어리 재생
+    document.getElementById('btn-ed-play-chunk').addEventListener('click', () => {
+      const tr = tracks[activeTrackIdx];
+      if (!tr.chunks.length || tr.selectedChunkIndex === null || !tr.chunks[tr.selectedChunkIndex]) {
+        return alert('재생할 덩어리를 선택해 주세요.');
+      }
+      stopAllEditorTracks();
+      const chunk = tr.chunks[tr.selectedChunkIndex];
+      tr.ws.play(chunk.startTime, chunk.startTime + (chunk.buffer.duration / (chunk.speed || 1.0)));
+    });
+
+    // ⏮ 처음으로
     document.getElementById('btn-ed-restart').addEventListener('click', () => {
-      if (!editorWs) return;
-      editorWs.setTime(0);
-      editorWs.play();
+      tracks.forEach(tr => { if (tr.ws) tr.ws.setTime(0); });
     });
 
-    // ✂️ 선택구간 남기기 (자르기)
-    document.getElementById('btn-ed-crop').addEventListener('click', () => {
-      if (!editorAudioBuffer) return alert('편집할 음원이 없습니다.');
-      if (!editorRegion) return alert('마우스로 드래그하여 자를 구간을 먼저 선택하세요.');
+    // ✂️ 자르기
+    document.getElementById('btn-ed-split').addEventListener('click', () => {
+      const tr = tracks[activeTrackIdx];
+      if (!tr.chunks.length) return alert('자르고자 하는 트랙에 음원이 없습니다.');
 
-      editorAudioBuffer = cropAudioBuffer(editorAudioBuffer, editorRegion.start, editorRegion.end);
-      reloadEditorWaveform();
-      document.getElementById('editor-status-text').innerText = '✂️ 선택 구간만 남기고 잘라냈습니다.';
+      saveHistory();
+
+      let splitTime = tr.ws.getCurrentTime();
+      let newChunks = [];
+
+      for (let i = 0; i < tr.chunks.length; i++) {
+        const chunk = tr.chunks[i];
+        const spd = chunk.speed || 1.0;
+        const dur = chunk.buffer.duration / spd;
+        const chunkStart = chunk.startTime;
+        const chunkEnd = chunkStart + dur;
+
+        if (splitTime > chunkStart + 0.05 && splitTime < chunkEnd - 0.05) {
+          const relSplitSec = (splitTime - chunkStart) * spd;
+          const rawDur = chunk.buffer.duration;
+
+          newChunks.push({ id: Date.now() + Math.random(), buffer: cropAudioBuffer(chunk.buffer, 0, relSplitSec), volume: chunk.volume, speed: chunk.speed, startTime: chunkStart, color: chunkColors[newChunks.length % chunkColors.length] });
+          newChunks.push({ id: Date.now() + Math.random(), buffer: cropAudioBuffer(chunk.buffer, relSplitSec, rawDur), volume: chunk.volume, speed: chunk.speed, startTime: splitTime, color: chunkColors[newChunks.length % chunkColors.length] });
+        } else {
+          newChunks.push(chunk);
+        }
+      }
+
+      tr.chunks = newChunks;
+      renderTrackChunks(activeTrackIdx, true);
+      saveHistory();
+      document.getElementById('editor-status-text').innerText = `✂️ [Track ${activeTrackIdx + 1}] ${splitTime.toFixed(2)}초 위치에서 덩어리가 분할되었습니다!`;
     });
 
-    // 🗑️ 선택구간 삭제 (이외 남기기)
-    document.getElementById('btn-ed-delete').addEventListener('click', () => {
-      if (!editorAudioBuffer) return alert('편집할 음원이 없습니다.');
-      if (!editorRegion) return alert('삭제할 구간을 마우스로 선택하세요.');
-
-      editorAudioBuffer = deleteAudioRegion(editorAudioBuffer, editorRegion.start, editorRegion.end);
-      reloadEditorWaveform();
-      document.getElementById('editor-status-text').innerText = '🗑️ 선택 구간을 삭제했습니다.';
+    // 미세 이동 ◀ ▶
+    document.getElementById('btn-ed-shift-left').addEventListener('click', () => {
+      const tr = tracks[activeTrackIdx];
+      if (tr.selectedChunkIndex === null || !tr.chunks[tr.selectedChunkIndex]) return;
+      saveHistory();
+      tr.chunks[tr.selectedChunkIndex].startTime = Math.max(0, tr.chunks[tr.selectedChunkIndex].startTime - 0.5);
+      renderTrackChunks(activeTrackIdx, true);
+    });
+    document.getElementById('btn-ed-shift-right').addEventListener('click', () => {
+      const tr = tracks[activeTrackIdx];
+      if (tr.selectedChunkIndex === null || !tr.chunks[tr.selectedChunkIndex]) return;
+      saveHistory();
+      tr.chunks[tr.selectedChunkIndex].startTime += 0.5;
+      renderTrackChunks(activeTrackIdx, true);
     });
 
-    // 📋 선택구간 복사
+    // 📋 복사 & 📌 붙여넣기 & 🗑️ 삭제
     document.getElementById('btn-ed-copy').addEventListener('click', () => {
-      if (!editorAudioBuffer) return alert('편집할 음원이 없습니다.');
-      if (!editorRegion) return alert('복사할 구간을 마우스로 선택하세요.');
-
-      clipboardAudioBuffer = cropAudioBuffer(editorAudioBuffer, editorRegion.start, editorRegion.end);
-      document.getElementById('editor-status-text').innerText = '📋 선택 구간이 클립보드에 복사되었습니다.';
+      const tr = tracks[activeTrackIdx];
+      if (tr.selectedChunkIndex === null || !tr.chunks[tr.selectedChunkIndex]) return alert('복사할 덩어리를 선택해 주세요.');
+      const target = tr.chunks[tr.selectedChunkIndex];
+      clipboardChunk = { buffer: target.buffer, volume: target.volume, speed: target.speed || 1.0, color: target.color };
+      document.getElementById('editor-status-text').innerText = `📋 [Track ${activeTrackIdx + 1}] 덩어리가 클립보드에 복사되었습니다.`;
     });
 
-    // 📌 붙여넣기 (커서 위치에 이동/삽입)
     document.getElementById('btn-ed-paste').addEventListener('click', () => {
-      if (!editorAudioBuffer) return alert('편집할 음원이 없습니다.');
-      if (!clipboardAudioBuffer) return alert('복사된 구간이 없습니다. 먼저 📋 버튼으로 구간을 복사해 주세요.');
+      if (!clipboardChunk) return alert('복사된 덩어리가 없습니다.');
+      const tr = tracks[activeTrackIdx];
+      saveHistory();
 
-      const insertTime = editorWs.getCurrentTime();
-      editorAudioBuffer = insertAudioBuffer(editorAudioBuffer, clipboardAudioBuffer, insertTime);
-      reloadEditorWaveform();
-      document.getElementById('editor-status-text').innerText = `📌 현재 커서(${insertTime.toFixed(2)}초) 위치에 복사한 구간을 삽입했습니다.`;
+      const insertIdx = tr.selectedChunkIndex !== null ? tr.selectedChunkIndex + 1 : tr.chunks.length;
+      let newStart = tr.ws.getCurrentTime();
+
+      tr.chunks.splice(insertIdx, 0, {
+        id: Date.now() + Math.random(),
+        buffer: clipboardChunk.buffer,
+        volume: clipboardChunk.volume,
+        speed: clipboardChunk.speed,
+        startTime: newStart,
+        color: chunkColors[insertIdx % chunkColors.length]
+      });
+      tr.selectedChunkIndex = insertIdx;
+      renderTrackChunks(activeTrackIdx, true);
+      saveHistory();
+      document.getElementById('editor-status-text').innerText = `📌 [Track ${activeTrackIdx + 1}]에 붙여넣어졌습니다.`;
     });
 
-    // 볼륨 레이블 변경
+    document.getElementById('btn-ed-delete').addEventListener('click', () => {
+      const tr = tracks[activeTrackIdx];
+      if (!tr.chunks.length || tr.selectedChunkIndex === null || !tr.chunks[tr.selectedChunkIndex]) return alert('삭제할 덩어리를 선택하세요.');
+      saveHistory();
+
+      tr.chunks.splice(tr.selectedChunkIndex, 1);
+      tr.selectedChunkIndex = Math.max(0, tr.selectedChunkIndex - 1);
+      renderTrackChunks(activeTrackIdx, true);
+      saveHistory();
+      document.getElementById('editor-status-text').innerText = `🗑️ [Track ${activeTrackIdx + 1}] 덩어리가 삭제되었습니다.`;
+    });
+
+    // 볼륨 조절
     document.getElementById('editor-volume').addEventListener('input', (e) => {
-      document.getElementById('editor-vol-val').innerText = `${Math.round(e.target.value * 100)}%`;
+      const volVal = parseFloat(e.target.value);
+      document.getElementById('editor-vol-val').innerText = `${Math.round(volVal * 100)}%`;
+      const tr = tracks[activeTrackIdx];
+      if (tr.chunks.length > 0 && tr.selectedChunkIndex !== null && tr.chunks[tr.selectedChunkIndex]) {
+        tr.chunks[tr.selectedChunkIndex].volume = volVal;
+        renderTrackChunks(activeTrackIdx, false);
+      }
+    });
+    document.getElementById('editor-volume').addEventListener('change', () => {
+      renderTrackChunks(activeTrackIdx, true);
+      saveHistory();
     });
 
-    // ⚡ 파일 추출 및 저장
+    // 속도 조절
+    document.getElementById('editor-speed').addEventListener('input', (e) => {
+      const spdVal = parseFloat(e.target.value);
+      document.getElementById('editor-speed-val').innerText = `${spdVal.toFixed(1)}x`;
+      const tr = tracks[activeTrackIdx];
+      if (tr.chunks.length > 0 && tr.selectedChunkIndex !== null && tr.chunks[tr.selectedChunkIndex]) {
+        tr.chunks[tr.selectedChunkIndex].speed = spdVal;
+        renderTrackChunks(activeTrackIdx, false);
+      }
+    });
+    document.getElementById('editor-speed').addEventListener('change', () => {
+      renderTrackChunks(activeTrackIdx, true);
+      saveHistory();
+    });
+
+    // 💾 수동 저장 및 🎸 메인 플레이어 전달
     document.getElementById('btn-editor-process').addEventListener('click', () => {
-      if (!editorAudioBuffer) return alert('편집할 파일이 로드되지 않았습니다.');
+      if (!tracks[0].chunks.length && !tracks[1].chunks.length) return alert('저장할 트랙 데이터가 없습니다.');
 
       const editorStatus = document.getElementById('editor-status-text');
-      editorStatus.innerText = '⚡ 가공 및 다운로드 처리 중...';
+      editorStatus.innerText = '💾 2개 트랙 전체 오버랩 합성 중...';
 
       setTimeout(() => {
         try {
-          let workingBuffer = editorAudioBuffer;
-
-          const volRatio = parseFloat(document.getElementById('editor-volume').value);
           const fadeInSec = parseFloat(document.getElementById('editor-fade-in').value);
           const fadeOutSec = parseFloat(document.getElementById('editor-fade-out').value);
 
-          workingBuffer = applyVolumeAndFade(workingBuffer, volRatio, fadeInSec, fadeOutSec);
+          let mixedBuffer = combineAllTracksToBuffer(tracks);
+          if (fadeInSec > 0 || fadeOutSec > 0) mixedBuffer = applyFadeInOut(mixedBuffer, fadeInSec, fadeOutSec);
 
-          const editedResultBlob = bufferToWav(workingBuffer);
-          const audioUrl = URL.createObjectURL(editedResultBlob);
+          const wavBlob = bufferToWav(mixedBuffer);
+          const audioUrl = URL.createObjectURL(wavBlob);
 
           const a = document.createElement('a');
           a.href = audioUrl;
-          a.download = `edited_studio_${Date.now()}.mp3`;
+          a.download = `multitrack_studio_${Date.now()}.mp3`;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
 
-          editorStatus.innerText = '★ 파일 추출 및 다운로드 완료!';
+          editorStatus.innerText = '★ 2개 트랙이 결합된 MP3 파일이 저장되었습니다!';
         } catch (err) {
-          alert("편집 처리 오류: " + err.message);
+          alert("저장 오류: " + err.message);
         }
       }, 50);
     });
 
-    // 🎸 메인 앱 플레이어로 적용
     document.getElementById('btn-editor-apply-main').addEventListener('click', () => {
-      if (!editorAudioBuffer) return alert('편집할 파일이 존재하지 않습니다.');
+      if (!tracks[0].chunks.length && !tracks[1].chunks.length) return alert('가져올 트랙이 없습니다.');
 
-      let workingBuffer = editorAudioBuffer;
-      
-      const volRatio = parseFloat(document.getElementById('editor-volume').value);
       const fadeInSec = parseFloat(document.getElementById('editor-fade-in').value);
       const fadeOutSec = parseFloat(document.getElementById('editor-fade-out').value);
-      workingBuffer = applyVolumeAndFade(workingBuffer, volRatio, fadeInSec, fadeOutSec);
 
-      const editedBlob = bufferToWav(workingBuffer);
-      const file = new File([editedBlob], `studio_edited_${Date.now()}.mp3`, { type: 'audio/mp3' });
+      let mixedBuffer = combineAllTracksToBuffer(tracks);
+      if (fadeInSec > 0 || fadeOutSec > 0) mixedBuffer = applyFadeInOut(mixedBuffer, fadeInSec, fadeOutSec);
+
+      const editedBlob = bufferToWav(mixedBuffer);
+      const file = new File([editedBlob], `multitrack_studio_${Date.now()}.mp3`, { type: 'audio/mp3' });
 
       loadMediaFile(file);
       editorModal.style.display = 'none';
-      if (editorWs && editorWs.isPlaying()) editorWs.pause();
-      alert('🎸 편집된 음원이 메인 플레이어로 반영되었습니다!');
+      stopAllEditorTracks();
+      alert('🎸 2개 트랙 합성 음원이 메인 플레이어에 반영되었습니다!');
     });
 
     // ==========================================
-    // Web Audio API 버퍼 가공 모듈
+    // 오디오 가공 및 타임라인 여백 확장 결합 모듈
     // ==========================================
 
-    // 1. 선택 구간 잘라내기 (남기기)
     function cropAudioBuffer(buffer, startSec, endSec) {
       const sampleRate = buffer.sampleRate;
       const startFrame = Math.floor(startSec * sampleRate);
@@ -786,74 +1097,94 @@
       return newBuffer;
     }
 
-    // 2. 선택 구간 삭제하기 (이외 남기기)
-    function deleteAudioRegion(buffer, startSec, endSec) {
+    function getSpeedAdjustedBuffer(buffer, speed) {
+      if (Math.abs(speed - 1.0) < 0.01) return buffer;
+      
       const sampleRate = buffer.sampleRate;
-      const startFrame = Math.floor(startSec * sampleRate);
-      const endFrame = Math.floor(endSec * sampleRate);
-      const cutFrames = endFrame - startFrame;
-      const totalFrames = Math.max(1, buffer.length - cutFrames);
-
+      const newLength = Math.floor(buffer.length / speed);
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const newBuffer = audioCtx.createBuffer(buffer.numberOfChannels, totalFrames, sampleRate);
+      const newBuffer = audioCtx.createBuffer(buffer.numberOfChannels, newLength, sampleRate);
 
       for (let c = 0; c < buffer.numberOfChannels; c++) {
         const src = buffer.getChannelData(c);
         const dst = newBuffer.getChannelData(c);
-
-        dst.set(src.subarray(0, startFrame), 0);
-        dst.set(src.subarray(endFrame), startFrame);
+        for (let i = 0; i < newLength; i++) {
+          const srcPos = i * speed;
+          const idx = Math.floor(srcPos);
+          const frac = srcPos - idx;
+          if (idx + 1 < src.length) {
+            dst[i] = src[idx] * (1 - frac) + src[idx + 1] * frac;
+          } else if (idx < src.length) {
+            dst[i] = src[idx];
+          } else {
+            dst[i] = 0;
+          }
+        }
       }
       audioCtx.close();
       return newBuffer;
     }
 
-    // 3. 커서 위치에 오디오 삽입하기 (붙여넣기)
-    function insertAudioBuffer(baseBuffer, insertBuffer, atSec) {
-      const sampleRate = baseBuffer.sampleRate;
-      const atFrame = Math.floor(atSec * sampleRate);
-      const totalFrames = baseBuffer.length + insertBuffer.length;
-      const channels = Math.max(baseBuffer.numberOfChannels, insertBuffer.numberOfChannels);
+    function combineChunksToBuffer(chunks, applyVolumeAndSpeed = true) {
+      if (!chunks.length) return null;
+
+      const processedBuffers = chunks.map(c => {
+        let buf = applyVolumeAndSpeed ? getSpeedAdjustedBuffer(c.buffer, c.speed || 1.0) : c.buffer;
+        return {
+          buffer: buf,
+          volume: applyVolumeAndSpeed ? (c.volume !== undefined ? c.volume : 1.0) : 1.0,
+          startTime: c.startTime || 0
+        };
+      });
+
+      const sampleRate = chunks[0].buffer.sampleRate;
+      let maxChannels = 1;
+      let maxChunkEndFrame = 0;
+
+      processedBuffers.forEach(item => {
+        const itemEndFrame = Math.floor((item.startTime + (item.buffer.length / sampleRate)) * sampleRate);
+        if (itemEndFrame > maxChunkEndFrame) maxChunkEndFrame = itemEndFrame;
+        if (item.buffer.numberOfChannels > maxChannels) maxChannels = item.buffer.numberOfChannels;
+      });
+
+      // ♾️ 뒤쪽에 30초 여유 타임라인 자동 확장
+      const paddingFrames = sampleRate * 30;
+      const totalLength = Math.max(sampleRate * 60, maxChunkEndFrame + paddingFrames);
 
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const newBuffer = audioCtx.createBuffer(channels, totalFrames, sampleRate);
+      const mergedBuffer = audioCtx.createBuffer(maxChannels, totalLength, sampleRate);
 
-      for (let c = 0; c < channels; c++) {
-        const dst = newBuffer.getChannelData(c);
-        const baseSrc = c < baseBuffer.numberOfChannels ? baseBuffer.getChannelData(c) : new Float32Array(baseBuffer.length);
-        const insSrc = c < insertBuffer.numberOfChannels ? insertBuffer.getChannelData(c) : new Float32Array(insertBuffer.length);
+      processedBuffers.forEach(item => {
+        const startFrame = Math.floor(item.startTime * sampleRate);
+        for (let c = 0; c < maxChannels; c++) {
+          const dst = mergedBuffer.getChannelData(c);
+          const src = c < item.buffer.numberOfChannels ? item.buffer.getChannelData(c) : new Float32Array(item.buffer.length);
 
-        dst.set(baseSrc.subarray(0, atFrame), 0);
-        dst.set(insSrc, atFrame);
-        dst.set(baseSrc.subarray(atFrame), atFrame + insertBuffer.length);
-      }
+          const vol = item.volume;
+          for (let i = 0; i < item.buffer.length; i++) {
+            const targetIdx = startFrame + i;
+            if (targetIdx < totalLength) {
+              dst[targetIdx] += src[i] * vol;
+            }
+          }
+        }
+      });
+
       audioCtx.close();
-      return newBuffer;
+      return mergedBuffer;
     }
 
-    // 4. 두 오디오 이어붙이기 (Concat)
-    function concatAudioBuffers(buf1, buf2) {
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const sampleRate = buf1.sampleRate;
-      const totalFrames = buf1.length + buf2.length;
-      const channels = Math.max(buf1.numberOfChannels, buf2.numberOfChannels);
-
-      const newBuffer = audioCtx.createBuffer(channels, totalFrames, sampleRate);
-
-      for (let c = 0; c < channels; c++) {
-        const dst = newBuffer.getChannelData(c);
-        const src1 = c < buf1.numberOfChannels ? buf1.getChannelData(c) : new Float32Array(buf1.length);
-        const src2 = c < buf2.numberOfChannels ? buf2.getChannelData(c) : new Float32Array(buf2.length);
-
-        dst.set(src1, 0);
-        dst.set(src2, buf1.length);
-      }
-      audioCtx.close();
-      return newBuffer;
+    function combineAllTracksToBuffer(allTracks) {
+      let allChunks = [];
+      allTracks.forEach(tr => {
+        if (tr.chunks && tr.chunks.length > 0) {
+          allChunks = allChunks.concat(tr.chunks);
+        }
+      });
+      return combineChunksToBuffer(allChunks, true);
     }
 
-    // 5. 볼륨 및 Fade In/Out 적용
-    function applyVolumeAndFade(buffer, volRatio, fadeInSec, fadeOutSec) {
+    function applyFadeInOut(buffer, fadeInSec, fadeOutSec) {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       const sampleRate = buffer.sampleRate;
       const totalFrames = buffer.length;
@@ -867,15 +1198,9 @@
         const dst = newBuffer.getChannelData(c);
 
         for (let i = 0; i < totalFrames; i++) {
-          let sample = src[i] * volRatio;
-
-          if (fadeInFrames > 0 && i < fadeInFrames) {
-            sample *= (i / fadeInFrames);
-          }
-          if (fadeOutFrames > 0 && i > (totalFrames - fadeOutFrames)) {
-            sample *= ((totalFrames - i) / fadeOutFrames);
-          }
-
+          let sample = src[i];
+          if (fadeInFrames > 0 && i < fadeInFrames) sample *= (i / fadeInFrames);
+          if (fadeOutFrames > 0 && i > (totalFrames - fadeOutFrames)) sample *= ((totalFrames - i) / fadeOutFrames);
           dst[i] = sample;
         }
       }
@@ -883,7 +1208,6 @@
       return newBuffer;
     }
 
-    // WAV/MP3 인코더
     function bufferToWav(abuffer) {
       let numOfChan = abuffer.numberOfChannels,
           len = abuffer.length * numOfChan * 2 + 44,
