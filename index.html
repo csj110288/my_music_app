@@ -8,11 +8,9 @@
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#4facfe">
 
-  <!-- Wavesurfer.js & Regions Plugin -->
   <script src="https://unpkg.com/wavesurfer.js@7"></script>
   <script src="https://unpkg.com/wavesurfer.js@7/dist/plugins/regions.min.js"></script>
 
-  <!-- Tone.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 
   <style>
@@ -105,6 +103,7 @@
     }
     button.secondary { background: #333; color: #fff; border: 1px solid #555; }
     button.record-btn { background: linear-gradient(to right, #ff007f, #7f00ff); color: #fff; }
+    button.stop-btn { background: #ff4b4b !important; color: #fff !important; }
     button:hover { opacity: 0.9; transform: translateY(-1px); }
     .status { font-size: 0.88rem; color: #00f2fe; margin-top: 6px; font-weight: bold; word-break: break-all; }
 
@@ -123,7 +122,7 @@
       padding: 20px;
       border-radius: 16px;
       width: 95%;
-      max-width: 820px;
+      max-width: 840px;
       max-height: 94vh;
       overflow-y: auto;
       border: 1px solid #4facfe;
@@ -145,10 +144,13 @@
       border-radius: 8px;
       margin-bottom: 10px;
       border: 2px solid #333;
-      transition: border-color 0.2s;
+      transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+      cursor: pointer;
     }
     .track-box.active {
-      border-color: #00f2fe;
+      border-color: #00f2fe !important;
+      box-shadow: 0 0 12px rgba(0, 242, 254, 0.35) !important;
+      background: #202026 !important;
     }
     .track-header {
       display: flex;
@@ -158,6 +160,7 @@
       font-size: 0.88rem;
       font-weight: bold;
     }
+
     .editor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-top: 10px; }
     
     .editor-toolbar {
@@ -181,13 +184,17 @@
     }
     .editor-toolbar .divider { color: #555; margin: 0 2px; }
 
-    /* 마우스/터치 자율 이동 전용 스타일 */
+    /* 마우스/터치 자율 이동 및 덩어리 선택 스타일 */
     .wavesurfer-region {
       touch-action: none !important;
       cursor: grab !important;
       border: 1.5px dashed rgba(255, 255, 255, 0.7) !important;
       border-radius: 4px;
       z-index: 10 !important;
+    }
+    .wavesurfer-region.selected-chunk {
+      border: 2px solid #ffbb00 !important;
+      box-shadow: 0 0 10px rgba(255, 187, 0, 0.7) !important;
     }
     .wavesurfer-region:active {
       cursor: grabbing !important;
@@ -207,7 +214,6 @@
       <h1>🎸 Musician Copy & Studio</h1>
     </div>
 
-    <!-- 메뉴 버튼을 파일 선택 버튼 앞으로 배치 -->
     <div class="controls-main">
       <button class="menu-btn" id="btn-open-menu">☰ 메뉴</button>
       <input type="file" id="audio-file" accept="audio/*,video/*">
@@ -215,22 +221,21 @@
       <button id="btn-restart" class="secondary">⏮ 처음으로</button>
       <button id="btn-clear-loop" class="secondary">구간 해제</button>
       <button id="btn-toggle-fit" class="secondary">📺 화면 꽉 채우기</button>
+      <button id="btn-record" class="record-btn">🎥 PC 화면 녹화</button>
     </div>
 
-    <!-- 비디오 화면 -->
     <div class="video-preview-box" id="video-container">
       <video id="media-engine"></video>
     </div>
 
     <div id="video-zoom-panel" style="display:none; margin-bottom: 12px; background: #282828; padding: 10px 16px; border-radius: 8px;">
       <div class="slider-header">
-        <span>Video Zoom (영상 확대 및 드래그 위치 이동)</span>
+        <span>Video Zoom (영상 화면 확대/위치 이동)</span>
         <span class="val" id="video-zoom-val">1.0x (기본 크기)</span>
       </div>
       <input type="range" id="slider-video-zoom" min="1.0" max="2.5" step="0.1" value="1.0">
     </div>
 
-    <!-- 메인 파형 콘솔 -->
     <div class="waveform-section">
       <div id="waveform"></div>
       
@@ -244,7 +249,6 @@
       <div class="status" id="status-text">음원 또는 영상 파일(MP3, MP4, WebM 등)을 선택하세요.</div>
     </div>
 
-    <!-- 속도/키 컨트롤 패널 -->
     <div class="slider-panel">
       <div class="slider-group">
         <div class="slider-header">
@@ -291,7 +295,6 @@
     </div>
   </div>
 
-  <!-- [메인 메뉴 모달] -->
   <div class="modal-overlay" id="menu-modal">
     <div class="modal-content" style="max-width: 420px;">
       <div class="modal-header">
@@ -304,7 +307,6 @@
     </div>
   </div>
 
-  <!-- [독립 멀티트랙 편집기 새창 모달] -->
   <div class="modal-overlay" id="editor-modal">
     <div class="modal-content">
       <div class="modal-header">
@@ -312,34 +314,39 @@
         <button class="close-btn" id="btn-close-editor">&times;</button>
       </div>
 
-      <!-- 트랙 1 (상단) -->
       <div class="track-box active" id="track-box-0">
         <div class="track-header">
-          <span style="color:#00f2fe;">🎵 Track 1 (상단 트랙)</span>
-          <input type="file" id="editor-file-1" accept="audio/*,video/*" style="font-size:0.8rem;">
+          <span style="color:#00f2fe; font-size:0.95rem;">🎵 Track 1 (상단 트랙)</span>
+          <input type="file" id="editor-file-1" accept="audio/*,video/*" style="font-size:0.8rem;" onclick="event.stopPropagation()">
         </div>
         <div id="editor-waveform-1" style="min-height:75px; background:#111; border-radius:6px; overflow:hidden;"></div>
       </div>
 
-      <!-- 트랙 2 (하단) -->
       <div class="track-box" id="track-box-1">
         <div class="track-header">
-          <span style="color:#ff007f;">🎵 Track 2 (하단 트랙)</span>
-          <input type="file" id="editor-file-2" accept="audio/*,video/*" style="font-size:0.8rem;">
+          <span style="color:#ff007f; font-size:0.95rem;">🎵 Track 2 (하단 트랙)</span>
+          <input type="file" id="editor-file-2" accept="audio/*,video/*" style="font-size:0.8rem;" onclick="event.stopPropagation()">
         </div>
         <div id="editor-waveform-2" style="min-height:75px; background:#111; border-radius:6px; overflow:hidden;"></div>
       </div>
 
-      <!-- 파형 정밀 확대 슬라이더 -->
-      <div style="margin-top: 6px; margin-bottom: 6px; background:#1a1a1a; padding:8px; border-radius:8px;">
-        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px; color: #4facfe;">
-          <span>🔍 Waveform Zoom (파형 정밀 확대)</span>
-          <span id="editor-zoom-val" style="color: #00f2fe;">기본 크기</span>
+      <div style="margin-top: 6px; margin-bottom: 6px; background:#1a1a1a; padding:10px; border-radius:8px; display:flex; flex-direction:column; gap:8px;">
+        <div>
+          <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px; color: #4facfe;">
+            <span>🔍 Waveform Zoom (2개 트랙 동시 정밀 확대)</span>
+            <span id="editor-zoom-val" style="color: #00f2fe;">기본 크기</span>
+          </div>
+          <input type="range" id="editor-slider-zoom" min="0" max="200" step="5" value="0">
         </div>
-        <input type="range" id="editor-slider-zoom" min="0" max="200" step="5" value="0">
+        <div>
+          <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 4px; color: #4facfe;">
+            <span>↔️ 타임라인 가로 이동 (2개 트랙 동시 스크롤)</span>
+            <span id="editor-scroll-val" style="color: #00f2fe;">0%</span>
+          </div>
+          <input type="range" id="editor-slider-scroll" min="0" max="100" step="0.5" value="0">
+        </div>
       </div>
 
-      <!-- 편집 버튼 툴바 -->
       <div class="editor-toolbar">
         <button id="btn-ed-undo" class="secondary" style="border:1px solid #ffbb00; color:#ffbb00; font-weight:bold;" title="이전 편집 되돌리기 (최대 25회)">
           ↩️ 되돌리기
@@ -349,20 +356,19 @@
         <button id="btn-ed-play-chunk" class="record-btn">▶ 선택 덩어리만</button>
         <button id="btn-ed-restart" class="secondary">⏮ 처음으로</button>
         <span class="divider">|</span>
-        <button id="btn-ed-split" class="secondary" style="background:#00f2fe; color:#000; font-weight:bold;">✂️ 자르기</button>
+        <button id="btn-ed-split" class="secondary" style="background:#00f2fe; color:#000; font-weight:bold;" title="현재 커서 위치에서 덩어리 자르기">✂️ 자르기</button>
         <button id="btn-ed-shift-left" class="secondary">◀ 0.5초</button>
         <button id="btn-ed-shift-right" class="secondary">0.5초 ▶</button>
         <span class="divider">|</span>
         <button id="btn-ed-copy" class="secondary">📋 복사</button>
         <button id="btn-ed-paste" class="secondary">📌 붙여넣기</button>
-        <button id="btn-ed-delete" class="secondary">🗑️ 삭제</button>
+        <button id="btn-ed-delete" class="secondary" style="background:#ff4b4b; color:#fff; font-weight:bold;" title="선택한 덩어리 삭제">🗑️ 덩어리 삭제</button>
       </div>
 
       <div style="font-size:0.78rem; color:#aaa; margin-top:6px;" id="editor-mode-desc">
-        * 음원 덩어리를 <b>마우스나 손가락으로 잡고 뒤로 끌어다 놓으면</b> 파형이 해당 위치로 이동하여 배치됩니다.
+        * 파형을 클릭하면 <b>선택한 위치로 커서가 이동</b>합니다. <b>[✂️ 자르기]</b>를 눌러 여러 덩어리로 나누고, <b>[재생] 버튼을 다시 누르면 중지</b>됩니다.
       </div>
 
-      <!-- 선택한 덩어리별 볼륨 및 재생속도 설정 -->
       <div style="background:#1a1a1a; padding:10px; border-radius:8px; margin-top:10px;">
         <div style="font-weight:bold; color:#00f2fe; margin-bottom:6px;" id="selected-chunk-label">선택된 덩어리 설정</div>
         <div class="editor-grid">
@@ -389,7 +395,6 @@
         </div>
       </div>
 
-      <!-- 수동 저장 및 메인 적용 -->
       <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
         <button id="btn-editor-process">💾 2개 트랙 수동 저장</button>
         <button id="btn-editor-apply-main" class="record-btn">🎸 메인 플레이어로 적용</button>
@@ -603,7 +608,84 @@
     document.getElementById('btn-reset-pitch').addEventListener('click', () => { sliderPitch.value = 0; applyParams(); });
 
     // ==========================================
-    // 🎼 2-Track 멀티트랙 스튜디오 편집기 (파형 실시간 동기화 엔진)
+    // 🎥 윈도우 화면 녹화 & MP3 동시 자동 추출 모듈
+    // ==========================================
+    let mediaRecorder = null, recordedChunks = [], recordStream = null;
+    const btnRecord = document.getElementById('btn-record');
+
+    btnRecord.addEventListener('click', async () => {
+      if (mediaRecorder && mediaRecorder.state === "recording") { stopRecording(); } else { await startRecording(); }
+    });
+
+    async function startRecording() {
+      try {
+        recordStream = await navigator.mediaDevices.getDisplayMedia({ video: { displaySurface: "window" }, audio: true });
+        if (recordStream.getAudioTracks().length === 0) alert("⚠️ 오디오 공유가 켜지지 않았습니다. 소리 녹음을 위해 화면 공유 시 오디오 공유를 켜주세요.");
+        recordedChunks = [];
+        const options = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? { mimeType: 'video/webm;codecs=vp9,opus' } : { mimeType: 'video/webm' };
+        mediaRecorder = new MediaRecorder(recordStream, options);
+        mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+        
+        mediaRecorder.onstop = async () => {
+          const videoBlob = new Blob(recordedChunks, { type: 'video/webm' });
+          const timeStamp = Date.now();
+
+          const videoUrl = URL.createObjectURL(videoBlob);
+          const aVid = document.createElement('a');
+          aVid.href = videoUrl;
+          aVid.download = `copy_app_video_${timeStamp}.webm`;
+          document.body.appendChild(aVid);
+          aVid.click();
+          document.body.removeChild(aVid);
+          URL.revokeObjectURL(videoUrl);
+
+          try {
+            statusText.style.color = "#00f2fe";
+            statusText.innerText = "⏳ 녹화본에서 MP3 오디오 추출 중...";
+
+            const arrayBuffer = await videoBlob.arrayBuffer();
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+            audioCtx.close();
+
+            const wavBlob = bufferToWav(audioBuffer);
+            const audioUrl = URL.createObjectURL(wavBlob);
+            const aAud = document.createElement('a');
+            aAud.href = audioUrl;
+            aAud.download = `copy_app_audio_${timeStamp}.mp3`;
+            document.body.appendChild(aAud);
+            aAud.click();
+            document.body.removeChild(aAud);
+            URL.revokeObjectURL(audioUrl);
+
+            statusText.style.color = "#00ff88";
+            statusText.innerText = "★ 영상(.webm)과 추출된 MP3 오디오가 함께 저장되었습니다!";
+          } catch (err) {
+            console.error(err);
+            statusText.style.color = "#00ff88";
+            statusText.innerText = "녹화 영상 저장 완료!";
+          }
+
+          btnRecord.innerText = "🎥 PC 화면 녹화";
+          btnRecord.style.background = "linear-gradient(to right, #ff007f, #7f00ff)";
+        };
+
+        recordStream.getVideoTracks()[0].onended = () => stopRecording();
+        mediaRecorder.start(1000);
+        btnRecord.innerText = "⏹️ 녹화 중지 및 저장";
+        btnRecord.style.background = "#ff4b4b";
+        statusText.style.color = "#ff007f";
+        statusText.innerText = "⏺️ 화면 녹화 진행 중...";
+      } catch (err) { if (err.name !== 'NotAllowedError') alert("녹화 시작 실패: " + err.message); }
+    }
+
+    function stopRecording() {
+      if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+      if (recordStream) recordStream.getTracks().forEach(track => track.stop());
+    }
+
+    // ==========================================
+    // 🎼 2-Track 멀티트랙 스튜디오 편집기 (트랙 선택 깜박임 제거 및 재생/중지 토글 엔진)
     // ==========================================
     const menuModal = document.getElementById('menu-modal');
     const editorModal = document.getElementById('editor-modal');
@@ -633,8 +715,9 @@
 
     let isDraggingRegion = false;
     let draggedTrackIdx = null;
+    let isSyncingScroll = false;
+    let chunkPlayInterval = null;
 
-    // 히스토리(되돌리기) 스택 관리 (최대 25단계)
     let historyStack = [];
     const MAX_HISTORY = 25;
 
@@ -659,7 +742,7 @@
       if (historyStack.length > MAX_HISTORY) historyStack.shift();
     }
 
-    function undo() {
+    async function undo() {
       if (historyStack.length <= 1) {
         return alert("더 이상 되돌릴 이전 편집 기록이 없습니다.");
       }
@@ -670,8 +753,8 @@
       prevState.forEach((savedTr, idx) => {
         tracks[idx].chunks = savedTr.chunks.map(c => ({ ...c }));
         tracks[idx].selectedChunkIndex = savedTr.selectedChunkIndex;
-        renderTrackChunks(idx, true);
       });
+      await renderAllTracksWithSharedDuration();
 
       document.getElementById('editor-status-text').innerText = `↩️ 이전 편집 상태로 복원되었습니다. (남은 되돌리기: ${historyStack.length - 1}회)`;
     }
@@ -686,16 +769,67 @@
       'rgba(255, 187, 0, 0.55)'
     ];
 
+    // 깜박임 없는 트랙 전환 (DOM 재생성 없이 CSS 하이라이트만 전환)
     function setActiveTrack(idx) {
       activeTrackIdx = idx;
       document.querySelectorAll('.track-box').forEach((box, i) => {
-        if (i === idx) box.classList.add('active');
-        else box.classList.remove('active');
+        box.classList.toggle('active', i === idx);
       });
+      updateSelectedChunkHighlight();
       updateChunkControlUI();
     }
 
+    function updateSelectedChunkHighlight() {
+      tracks.forEach((tr, tIdx) => {
+        if (!tr.wsRegions) return;
+        tr.wsRegions.getRegions().forEach(r => {
+          if (r.id.startsWith('chunk-')) {
+            const cIdx = parseInt(r.id.replace('chunk-', ''));
+            const isSelected = (tIdx === activeTrackIdx && cIdx === tr.selectedChunkIndex);
+            if (r.element) {
+              r.element.classList.toggle('selected-chunk', isSelected);
+            }
+          }
+        });
+      });
+    }
+
+    function getScrollElement(tr) {
+      if (!tr || !tr.ws) return null;
+      if (tr.ws.renderer && tr.ws.renderer.scrollContainer) return tr.ws.renderer.scrollContainer;
+      const wrapper = tr.ws.getWrapper && tr.ws.getWrapper();
+      if (wrapper && wrapper.parentElement && wrapper.parentElement !== wrapper) {
+        return wrapper.parentElement;
+      }
+      const container = document.querySelector(tr.containerId);
+      return container ? (container.firstElementChild || container) : null;
+    }
+
+    function setCursorFromEvent(tr, e) {
+      if (!tr || !tr.ws) return;
+      const scrollEl = getScrollElement(tr) || tr.ws.getWrapper();
+      if (!scrollEl) return;
+      const rect = scrollEl.getBoundingClientRect();
+      const clientX = (e.clientX !== undefined) ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientX : 0));
+      
+      const scrollOffset = scrollEl.scrollLeft || 0;
+      const clickX = (clientX - rect.left) + scrollOffset;
+      const totalWidth = scrollEl.scrollWidth || rect.width;
+      
+      const progress = Math.max(0, Math.min(1, clickX / totalWidth));
+      const targetTime = progress * tr.ws.getDuration();
+      tr.ws.setTime(targetTime);
+      document.getElementById('editor-status-text').innerText = `📍 [Track ${tr.id + 1}] 커서 위치: ${targetTime.toFixed(2)}초 (이 위치에서 [✂️ 자르기] 가능)`;
+    }
+
     function initMultitrackEditor() {
+      document.getElementById('track-box-0').addEventListener('pointerdown', (e) => {
+        if (!e.target.closest('input')) setActiveTrack(0);
+      });
+      document.getElementById('track-box-1').addEventListener('pointerdown', (e) => {
+        if (!e.target.closest('input')) setActiveTrack(1);
+      });
+
       tracks.forEach((tr, tIdx) => {
         if (!tr.ws) {
           tr.wsRegions = WaveSurfer.Regions.create();
@@ -710,30 +844,24 @@
             plugins: [tr.wsRegions]
           });
 
-          // 📍 덩어리 클릭 이벤트
+          // 📍 덩어리 영역 클릭 시 커서 이동 및 덩어리 선택
           tr.wsRegions.on('region-clicked', (r, e) => {
-            e.stopPropagation();
+            if (e && e.stopPropagation) e.stopPropagation();
             setActiveTrack(tIdx);
             if (r.id.startsWith('chunk-')) {
               const cIdx = parseInt(r.id.replace('chunk-', ''));
               if (!isNaN(cIdx) && tr.chunks[cIdx]) {
                 tr.selectedChunkIndex = cIdx;
-                
-                const wrapper = tr.ws.getWrapper();
-                if (wrapper && e) {
-                  const rect = wrapper.getBoundingClientRect();
-                  const clientX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
-                  if (clientX) {
-                    const progress = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-                    tr.ws.setTime(progress * tr.ws.getDuration());
-                  }
-                }
-                renderTrackChunks(tIdx, false);
+                updateSelectedChunkHighlight();
+                updateChunkControlUI();
               }
+            }
+            if (e) {
+              setCursorFromEvent(tr, e);
             }
           });
 
-          // ↔️ 마우스/터치로 블록 드래그 이동 중 실시간 시간 추적
+          // ↔️ 드래그 이동 중 실시간 시간 추적
           tr.wsRegions.on('region-updated', (r) => {
             if (r.id.startsWith('chunk-')) {
               isDraggingRegion = true;
@@ -744,14 +872,16 @@
                 const dur = tr.chunks[cIdx].buffer.duration / spd;
                 tr.chunks[cIdx].startTime = Math.max(0, r.start);
                 r.setOptions({ end: tr.chunks[cIdx].startTime + dur });
-                document.getElementById('editor-status-text').innerText = `↔ [Track ${tIdx + 1}] 음원 이동 중: 시작 ${tr.chunks[cIdx].startTime.toFixed(2)}초 (손을 떼면 확정됩니다)`;
+                document.getElementById('editor-status-text').innerText = `↔ [Track ${tIdx + 1}] 음원 이동 중: 시작 ${tr.chunks[cIdx].startTime.toFixed(2)}초`;
               }
             }
           });
 
-          tr.ws.on('interaction', () => {
+          // 🎯 파형 빈 영역 클릭 시 커서 설정
+          tr.ws.on('interaction', (newProgress) => {
             setActiveTrack(tIdx);
-            document.getElementById('editor-status-text').innerText = `📍 [Track ${tIdx + 1}] 커서 위치: ${tr.ws.getCurrentTime().toFixed(2)}초`;
+            const curTime = newProgress * tr.ws.getDuration();
+            document.getElementById('editor-status-text').innerText = `📍 [Track ${tIdx + 1}] 커서 위치: ${curTime.toFixed(2)}초 (이 위치에서 [✂️ 자르기] 가능)`;
           });
 
           // 🎵 파일 로드
@@ -776,10 +906,10 @@
               }];
               tr.selectedChunkIndex = 0;
               setActiveTrack(tIdx);
-              renderTrackChunks(tIdx, true);
-
+              
+              await renderAllTracksWithSharedDuration();
               saveHistory();
-              document.getElementById('editor-status-text').innerText = `★ Track ${tIdx + 1} 로드 완료! 블록을 잡아 뒤로 자유롭게 이동시켜보세요.`;
+              document.getElementById('editor-status-text').innerText = `★ Track ${tIdx + 1} 로드 완료! 음원 블록을 잡고 뒤로 이동시키거나 파형을 클릭해 자를 위치를 선택하세요.`;
             } catch (err) {
               alert("디코딩 실패: " + err.message);
             }
@@ -787,15 +917,15 @@
         }
       });
 
-      // 🎯 마우스/터치 드래그를 놓았을 때(pointerup/touchend) 파형과 무음 여백을 완벽하게 재합성!
-      const finishDragAndSync = () => {
+      // 🎯 마우스/터치 드래그 완료 시 파형 재합성
+      const finishDragAndSync = async () => {
         if (isDraggingRegion && draggedTrackIdx !== null) {
           const tIdx = draggedTrackIdx;
           const tr = tracks[tIdx];
           tr.chunks.sort((a, b) => a.startTime - b.startTime);
-          renderTrackChunks(tIdx, true); // 파형 데이터 실시간 재합성 및 위치 이동 반영
+          await renderAllTracksWithSharedDuration();
           saveHistory();
-          document.getElementById('editor-status-text').innerText = `★ [Track ${tIdx + 1}] 음원 전체 이동 및 파형 동기화 완료!`;
+          document.getElementById('editor-status-text').innerText = `★ [Track ${tIdx + 1}] 음원 전체 이동 및 파형 배치 완료!`;
           isDraggingRegion = false;
           draggedTrackIdx = null;
         }
@@ -806,27 +936,108 @@
       window.addEventListener('mouseup', finishDragAndSync);
     }
 
-    // Zoom
+    // 🔍 2개 트랙 동시 확대
     document.getElementById('editor-slider-zoom').addEventListener('input', (e) => {
       const zoomPx = parseInt(e.target.value);
-      tracks.forEach(tr => { if (tr.ws) tr.ws.zoom(zoomPx); });
+      tracks.forEach(tr => {
+        if (tr.ws) tr.ws.zoom(zoomPx);
+      });
       document.getElementById('editor-zoom-val').innerText = zoomPx === 0 ? '기본 크기' : `${zoomPx}px/sec (확대)`;
+      
+      const scrollPct = parseFloat(document.getElementById('editor-slider-scroll').value);
+      syncScrollPosition(scrollPct);
     });
 
-    // 트랙 렌더링 함수
-    function renderTrackChunks(tIdx, reloadWaveform = true) {
+    // ↔️ 2개 트랙 동시 가로 스크롤 연동
+    document.getElementById('editor-slider-scroll').addEventListener('input', (e) => {
+      const pct = parseFloat(e.target.value);
+      document.getElementById('editor-scroll-val').innerText = `${Math.round(pct)}%`;
+      syncScrollPosition(pct);
+    });
+
+    function syncScrollPosition(pct) {
+      isSyncingScroll = true;
+      tracks.forEach(tr => {
+        const el = getScrollElement(tr);
+        if (el) {
+          const maxScroll = el.scrollWidth - el.clientWidth;
+          if (maxScroll > 0) {
+            el.scrollLeft = (pct / 100) * maxScroll;
+          } else {
+            el.scrollLeft = 0;
+          }
+        }
+      });
+      setTimeout(() => { isSyncingScroll = false; }, 30);
+    }
+
+    function attachTrackScrollListeners() {
+      tracks.forEach((tr) => {
+        const el = getScrollElement(tr);
+        if (el && !el._hasScrollListener) {
+          el._hasScrollListener = true;
+          el.addEventListener('scroll', () => {
+            if (isSyncingScroll) return;
+            isSyncingScroll = true;
+            const maxScroll = el.scrollWidth - el.clientWidth;
+            const pct = maxScroll > 0 ? (el.scrollLeft / maxScroll) * 100 : 0;
+
+            document.getElementById('editor-slider-scroll').value = pct;
+            document.getElementById('editor-scroll-val').innerText = `${Math.round(pct)}%`;
+
+            tracks.forEach(otherTr => {
+              if (otherTr !== tr) {
+                const otherEl = getScrollElement(otherTr);
+                if (otherEl) otherEl.scrollLeft = el.scrollLeft;
+              }
+            });
+            setTimeout(() => { isSyncingScroll = false; }, 30);
+          });
+        }
+      });
+    }
+
+    function getGlobalTotalFrames() {
+      let maxEnd = 0;
+      let sr = 44100;
+      tracks.forEach(tr => {
+        tr.chunks.forEach(c => {
+          const dur = c.buffer.duration / (c.speed || 1.0);
+          const end = c.startTime + dur;
+          if (end > maxEnd) maxEnd = end;
+          sr = c.buffer.sampleRate || sr;
+        });
+      });
+      const paddingSec = 60;
+      const totalSec = Math.max(90, maxEnd + paddingSec);
+      return Math.floor(totalSec * sr);
+    }
+
+    async function renderAllTracksWithSharedDuration() {
+      const globalFrames = getGlobalTotalFrames();
+      for (let idx = 0; idx < tracks.length; idx++) {
+        await renderTrackChunks(idx, true, globalFrames);
+      }
+      setTimeout(attachTrackScrollListeners, 100);
+    }
+
+    // 개별 트랙 렌더링 함수
+    async function renderTrackChunks(tIdx, reloadWaveform = true, fixedFrames = null) {
       const tr = tracks[tIdx];
+      if (!tr.ws) return;
+
       if (!tr.chunks.length) {
         tr.ws.empty();
+        if (tr.wsRegions) tr.wsRegions.clearRegions();
         updateChunkControlUI();
         return;
       }
 
-      // 파형과 무음 여백을 포함하여 WaveSurfer에 로드
       if (reloadWaveform) {
-        const combined = combineChunksToBuffer(tr.chunks, true);
+        const frames = fixedFrames || getGlobalTotalFrames();
+        const combined = combineChunksToBuffer(tr.chunks, true, frames);
         const wavBlob = bufferToWav(combined);
-        tr.ws.load(URL.createObjectURL(wavBlob));
+        await tr.ws.load(URL.createObjectURL(wavBlob));
       }
 
       if (tr.wsRegions) tr.wsRegions.clearRegions();
@@ -836,22 +1047,26 @@
         const duration = chunk.buffer.duration / spd;
         const isSelected = (tIdx === activeTrackIdx && idx === tr.selectedChunkIndex);
 
-        tr.wsRegions.addRegion({
+        const r = tr.wsRegions.addRegion({
           id: `chunk-${idx}`,
           start: chunk.startTime,
           end: chunk.startTime + duration,
-          color: isSelected ? 'rgba(0, 242, 254, 0.65)' : chunk.color,
-          drag: true, // 언제든 마우스/터치 드래그 이동 가능
+          color: isSelected ? 'rgba(0, 242, 254, 0.7)' : chunk.color,
+          drag: true,
           resize: false,
-          content: `[${idx + 1}] ${Math.round(chunk.volume * 100)}% / ${(spd).toFixed(1)}x (↔ 이동)`
+          content: `[${idx + 1}] ${Math.round(chunk.volume * 100)}% / ${(spd).toFixed(1)}x`
         });
+
+        if (isSelected && r.element) {
+          r.element.classList.add('selected-chunk');
+        }
       });
 
       if (tr.selectedChunkIndex >= tr.chunks.length) tr.selectedChunkIndex = Math.max(0, tr.chunks.length - 1);
       updateChunkControlUI();
 
       const curZoom = parseInt(document.getElementById('editor-slider-zoom').value);
-      if (curZoom > 0) tr.ws.zoom(curZoom);
+      if (curZoom > 0 && tr.ws) tr.ws.zoom(curZoom);
     }
 
     function updateChunkControlUI() {
@@ -864,50 +1079,104 @@
         document.getElementById('editor-speed-val').innerText = `${(chunk.speed || 1.0).toFixed(1)}x`;
         document.getElementById('selected-chunk-label').innerText = `[Track ${activeTrackIdx + 1} - 덩어리 ${tr.selectedChunkIndex + 1}] 설정 (시작: ${chunk.startTime.toFixed(2)}초)`;
       } else {
-        document.getElementById('selected-chunk-label').innerText = `[Track ${activeTrackIdx + 1}] 선택 덩어리 없음`;
+        document.getElementById('selected-chunk-label').innerText = `[Track ${activeTrackIdx + 1}] 선택된 덩어리 없음`;
         document.getElementById('editor-vol-val').innerText = `100%`;
         document.getElementById('editor-speed-val').innerText = `1.0x`;
       }
     }
 
-    // ▶ 전체 동시 재생
-    document.getElementById('btn-ed-play').addEventListener('click', () => {
+    // ▶ [토글] 전체 동시 재생 / 중지
+    const btnEdPlay = document.getElementById('btn-ed-play');
+    btnEdPlay.addEventListener('click', () => {
       const isAnyPlaying = tracks.some(tr => tr.ws && tr.ws.isPlaying());
       if (isAnyPlaying) {
         stopAllEditorTracks();
       } else {
-        tracks.forEach(tr => { if (tr.ws && tr.chunks.length > 0) tr.ws.play(); });
+        stopAllEditorTracks(); // 기존 재생 정리
+        
+        const activeTr = tracks[activeTrackIdx];
+        const syncTime = activeTr && activeTr.ws ? activeTr.ws.getCurrentTime() : 0;
+
+        tracks.forEach(tr => {
+          if (tr.ws && tr.chunks.length > 0) {
+            tr.ws.setTime(syncTime);
+            tr.ws.play();
+          }
+        });
+        btnEdPlay.innerText = "⏹️ 동시재생 중지";
+        btnEdPlay.classList.add('stop-btn');
       }
     });
 
     function stopAllEditorTracks() {
+      if (chunkPlayInterval) { clearInterval(chunkPlayInterval); chunkPlayInterval = null; }
       tracks.forEach(tr => { if (tr.ws && tr.ws.isPlaying()) tr.ws.pause(); });
+      
+      btnEdPlay.innerText = "▶ 전체동시재생";
+      btnEdPlay.classList.remove('stop-btn');
+
+      const btnEdPlayChunk = document.getElementById('btn-ed-play-chunk');
+      btnEdPlayChunk.innerText = "▶ 선택 덩어리만";
+      btnEdPlayChunk.classList.remove('stop-btn');
     }
 
-    // ▶ 선택 덩어리 재생
-    document.getElementById('btn-ed-play-chunk').addEventListener('click', () => {
+    // ▶ [토글] 선택 덩어리만 재생 / 중지
+    const btnEdPlayChunk = document.getElementById('btn-ed-play-chunk');
+    btnEdPlayChunk.addEventListener('click', () => {
       const tr = tracks[activeTrackIdx];
       if (!tr.chunks.length || tr.selectedChunkIndex === null || !tr.chunks[tr.selectedChunkIndex]) {
-        return alert('재생할 덩어리를 선택해 주세요.');
+        return alert('재생할 덩어리를 클릭하여 선택해 주세요.');
       }
+
+      // 이미 덩어리 재생 중이면 즉시 정지
+      if (chunkPlayInterval || (tr.ws && tr.ws.isPlaying())) {
+        stopAllEditorTracks();
+        document.getElementById('editor-status-text').innerText = '⏹ 재생이 중지되었습니다.';
+        return;
+      }
+
       stopAllEditorTracks();
+
       const chunk = tr.chunks[tr.selectedChunkIndex];
-      tr.ws.play(chunk.startTime, chunk.startTime + (chunk.buffer.duration / (chunk.speed || 1.0)));
+      const startT = chunk.startTime;
+      const dur = chunk.buffer.duration / (chunk.speed || 1.0);
+      const endT = startT + dur;
+
+      tr.ws.setTime(startT);
+      tr.ws.play();
+
+      btnEdPlayChunk.innerText = "⏹️ 덩어리재생 중지";
+      btnEdPlayChunk.classList.add('stop-btn');
+      document.getElementById('editor-status-text').innerText = `▶ [Track ${activeTrackIdx + 1} - 덩어리 ${tr.selectedChunkIndex + 1}] 재생 중 (${startT.toFixed(2)}s ~ ${endT.toFixed(2)}s)`;
+
+      chunkPlayInterval = setInterval(() => {
+        if (!tr.ws || !tr.ws.isPlaying()) {
+          stopAllEditorTracks();
+          return;
+        }
+        if (tr.ws.getCurrentTime() >= endT) {
+          tr.ws.pause();
+          tr.ws.setTime(startT);
+          stopAllEditorTracks();
+          document.getElementById('editor-status-text').innerText = `⏹ [Track ${activeTrackIdx + 1} - 덩어리 ${tr.selectedChunkIndex + 1}] 재생 완료.`;
+        }
+      }, 25);
     });
 
     // ⏮ 처음으로
     document.getElementById('btn-ed-restart').addEventListener('click', () => {
+      stopAllEditorTracks();
       tracks.forEach(tr => { if (tr.ws) tr.ws.setTime(0); });
+      document.getElementById('editor-status-text').innerText = '⏮ 두 트랙이 처음(0.00초) 위치로 이동되었습니다.';
     });
 
-    // ✂️ 자르기
+    // ✂️ 여러 덩어리로 자르기 (즉각 분할)
     document.getElementById('btn-ed-split').addEventListener('click', () => {
       const tr = tracks[activeTrackIdx];
-      if (!tr.chunks.length) return alert('자르고자 하는 트랙에 음원이 없습니다.');
-
-      saveHistory();
+      if (!tr.chunks || !tr.chunks.length) return alert('자르고자 하는 트랙에 음원이 없습니다.');
 
       let splitTime = tr.ws.getCurrentTime();
+      let wasSplit = false;
       let newChunks = [];
 
       for (let i = 0; i < tr.chunks.length; i++) {
@@ -921,36 +1190,63 @@
           const relSplitSec = (splitTime - chunkStart) * spd;
           const rawDur = chunk.buffer.duration;
 
-          newChunks.push({ id: Date.now() + Math.random(), buffer: cropAudioBuffer(chunk.buffer, 0, relSplitSec), volume: chunk.volume, speed: chunk.speed, startTime: chunkStart, color: chunkColors[newChunks.length % chunkColors.length] });
-          newChunks.push({ id: Date.now() + Math.random(), buffer: cropAudioBuffer(chunk.buffer, relSplitSec, rawDur), volume: chunk.volume, speed: chunk.speed, startTime: splitTime, color: chunkColors[newChunks.length % chunkColors.length] });
+          const chunkA = { id: Date.now() + Math.random(), buffer: cropAudioBuffer(chunk.buffer, 0, relSplitSec), volume: chunk.volume, speed: chunk.speed, startTime: chunkStart, color: chunkColors[newChunks.length % chunkColors.length] };
+          const chunkB = { id: Date.now() + Math.random() + 1, buffer: cropAudioBuffer(chunk.buffer, relSplitSec, rawDur), volume: chunk.volume, speed: chunk.speed, startTime: chunkStart + (relSplitSec / spd), color: chunkColors[(newChunks.length + 1) % chunkColors.length] };
+
+          newChunks.push(chunkA);
+          newChunks.push(chunkB);
+          wasSplit = true;
+          tr.selectedChunkIndex = newChunks.length - 1;
         } else {
           newChunks.push(chunk);
         }
       }
 
-      tr.chunks = newChunks;
-      renderTrackChunks(activeTrackIdx, true);
+      if (!wasSplit) {
+        return alert(`커서 위치(${splitTime.toFixed(2)}초)에 자를 수 있는 덩어리가 없습니다. 덩어리 안쪽 파형을 클릭해 빨간 커서를 위치시켜주세요.`);
+      }
+
       saveHistory();
-      document.getElementById('editor-status-text').innerText = `✂️ [Track ${activeTrackIdx + 1}] ${splitTime.toFixed(2)}초 위치에서 덩어리가 분할되었습니다!`;
+      tr.chunks = newChunks;
+      renderTrackChunks(activeTrackIdx, false);
+      updateSelectedChunkHighlight();
+      updateChunkControlUI();
+      document.getElementById('editor-status-text').innerText = `✂️ [Track ${activeTrackIdx + 1}] ${splitTime.toFixed(2)}초 지점에서 분할 완료! (총 ${tr.chunks.length}개 덩어리)`;
+    });
+
+    // 🗑️ 선택 덩어리 삭제
+    document.getElementById('btn-ed-delete').addEventListener('click', async () => {
+      const tr = tracks[activeTrackIdx];
+      if (!tr.chunks.length || tr.selectedChunkIndex === null || !tr.chunks[tr.selectedChunkIndex]) {
+        return alert('삭제할 덩어리를 클릭하여 선택하세요.');
+      }
+
+      saveHistory();
+      const removedIdx = tr.selectedChunkIndex;
+      tr.chunks.splice(removedIdx, 1);
+      tr.selectedChunkIndex = Math.max(0, removedIdx - 1);
+      
+      await renderAllTracksWithSharedDuration();
+      document.getElementById('editor-status-text').innerText = `🗑️ [Track ${activeTrackIdx + 1}] ${removedIdx + 1}번 덩어리가 삭제되었습니다.`;
     });
 
     // 미세 이동 ◀ ▶
-    document.getElementById('btn-ed-shift-left').addEventListener('click', () => {
+    document.getElementById('btn-ed-shift-left').addEventListener('click', async () => {
       const tr = tracks[activeTrackIdx];
       if (tr.selectedChunkIndex === null || !tr.chunks[tr.selectedChunkIndex]) return;
       saveHistory();
       tr.chunks[tr.selectedChunkIndex].startTime = Math.max(0, tr.chunks[tr.selectedChunkIndex].startTime - 0.5);
-      renderTrackChunks(activeTrackIdx, true);
+      await renderAllTracksWithSharedDuration();
     });
-    document.getElementById('btn-ed-shift-right').addEventListener('click', () => {
+    document.getElementById('btn-ed-shift-right').addEventListener('click', async () => {
       const tr = tracks[activeTrackIdx];
       if (tr.selectedChunkIndex === null || !tr.chunks[tr.selectedChunkIndex]) return;
       saveHistory();
       tr.chunks[tr.selectedChunkIndex].startTime += 0.5;
-      renderTrackChunks(activeTrackIdx, true);
+      await renderAllTracksWithSharedDuration();
     });
 
-    // 📋 복사 & 📌 붙여넣기 & 🗑️ 삭제
+    // 📋 복사 & 📌 붙여넣기
     document.getElementById('btn-ed-copy').addEventListener('click', () => {
       const tr = tracks[activeTrackIdx];
       if (tr.selectedChunkIndex === null || !tr.chunks[tr.selectedChunkIndex]) return alert('복사할 덩어리를 선택해 주세요.');
@@ -959,7 +1255,7 @@
       document.getElementById('editor-status-text').innerText = `📋 [Track ${activeTrackIdx + 1}] 덩어리가 클립보드에 복사되었습니다.`;
     });
 
-    document.getElementById('btn-ed-paste').addEventListener('click', () => {
+    document.getElementById('btn-ed-paste').addEventListener('click', async () => {
       if (!clipboardChunk) return alert('복사된 덩어리가 없습니다.');
       const tr = tracks[activeTrackIdx];
       saveHistory();
@@ -976,21 +1272,8 @@
         color: chunkColors[insertIdx % chunkColors.length]
       });
       tr.selectedChunkIndex = insertIdx;
-      renderTrackChunks(activeTrackIdx, true);
-      saveHistory();
+      await renderAllTracksWithSharedDuration();
       document.getElementById('editor-status-text').innerText = `📌 [Track ${activeTrackIdx + 1}]에 붙여넣어졌습니다.`;
-    });
-
-    document.getElementById('btn-ed-delete').addEventListener('click', () => {
-      const tr = tracks[activeTrackIdx];
-      if (!tr.chunks.length || tr.selectedChunkIndex === null || !tr.chunks[tr.selectedChunkIndex]) return alert('삭제할 덩어리를 선택하세요.');
-      saveHistory();
-
-      tr.chunks.splice(tr.selectedChunkIndex, 1);
-      tr.selectedChunkIndex = Math.max(0, tr.selectedChunkIndex - 1);
-      renderTrackChunks(activeTrackIdx, true);
-      saveHistory();
-      document.getElementById('editor-status-text').innerText = `🗑️ [Track ${activeTrackIdx + 1}] 덩어리가 삭제되었습니다.`;
     });
 
     // 볼륨 조절
@@ -1003,8 +1286,8 @@
         renderTrackChunks(activeTrackIdx, false);
       }
     });
-    document.getElementById('editor-volume').addEventListener('change', () => {
-      renderTrackChunks(activeTrackIdx, true);
+    document.getElementById('editor-volume').addEventListener('change', async () => {
+      await renderAllTracksWithSharedDuration();
       saveHistory();
     });
 
@@ -1018,8 +1301,8 @@
         renderTrackChunks(activeTrackIdx, false);
       }
     });
-    document.getElementById('editor-speed').addEventListener('change', () => {
-      renderTrackChunks(activeTrackIdx, true);
+    document.getElementById('editor-speed').addEventListener('change', async () => {
+      await renderAllTracksWithSharedDuration();
       saveHistory();
     });
 
@@ -1074,7 +1357,7 @@
     });
 
     // ==========================================
-    // 오디오 가공 및 타임라인 여백 확장 결합 모듈
+    // 오디오 가공 모듈
     // ==========================================
 
     function cropAudioBuffer(buffer, startSec, endSec) {
@@ -1125,7 +1408,7 @@
       return newBuffer;
     }
 
-    function combineChunksToBuffer(chunks, applyVolumeAndSpeed = true) {
+    function combineChunksToBuffer(chunks, applyVolumeAndSpeed = true, fixedTotalLength = null) {
       if (!chunks.length) return null;
 
       const processedBuffers = chunks.map(c => {
@@ -1147,9 +1430,8 @@
         if (item.buffer.numberOfChannels > maxChannels) maxChannels = item.buffer.numberOfChannels;
       });
 
-      // ♾️ 뒤쪽에 30초 여유 타임라인 자동 확장
-      const paddingFrames = sampleRate * 30;
-      const totalLength = Math.max(sampleRate * 60, maxChunkEndFrame + paddingFrames);
+      const paddingFrames = sampleRate * 60;
+      const totalLength = fixedTotalLength || Math.max(sampleRate * 90, maxChunkEndFrame + paddingFrames);
 
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       const mergedBuffer = audioCtx.createBuffer(maxChannels, totalLength, sampleRate);
